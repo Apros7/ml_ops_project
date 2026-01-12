@@ -474,11 +474,13 @@ class LicensePlateRecognizer:
                     log_probs = self.ocr(plate_tensor)
                     plate_text = self.ocr.decode(log_probs)[0]
 
-                recognitions.append({
-                    "bbox": [x1, y1, x2, y2],
-                    "confidence": box.conf[0].item(),
-                    "plate_text": plate_text,
-                })
+                recognitions.append(
+                    {
+                        "bbox": [x1, y1, x2, y2],
+                        "confidence": box.conf[0].item(),
+                        "plate_text": plate_text,
+                    }
+                )
 
         return recognitions
 

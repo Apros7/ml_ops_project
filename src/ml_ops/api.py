@@ -161,10 +161,12 @@ async def detect_plates(
         detections = []
         for result in results:
             for box in result.boxes:
-                detections.append({
-                    "bbox": box.xyxy[0].tolist(),
-                    "confidence": box.conf[0].item(),
-                })
+                detections.append(
+                    {
+                        "bbox": box.xyxy[0].tolist(),
+                        "confidence": box.conf[0].item(),
+                    }
+                )
 
         return JSONResponse(
             content={

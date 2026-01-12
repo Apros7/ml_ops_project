@@ -123,7 +123,7 @@ will check the repositories and the code to verify your answers.
 >
 > Answer:
 
---- question 1 fill here ---
+Group 60
 
 ### Question 2
 > **Enter the study number for each member in the group**
@@ -134,7 +134,7 @@ will check the repositories and the code to verify your answers.
 >
 > Answer:
 
---- question 2 fill here ---
+*s224209, s224166, s224194, s224195*
 
 ### Question 3
 > **Did you end up using any open-source frameworks/packages not covered in the course during your project? If so**
@@ -168,7 +168,20 @@ will check the repositories and the code to verify your answers.
 >
 > Answer:
 
---- question 4 fill here ---
+*We used uv for managing our dependencies. The list of dependencies was auto-generated using uv add <package> . To get a*
+*complete copy of our development environment, one would have to run the following commands*
+
+```bash
+uv sync
+```
+*This would install all the dependencies listed in the uv.lock file to create an exact copy of our development environment.*
+*Dependencies are listed in the pyproject.toml file, with the exact versions listed in the uv.lock file.*
+
+*Lastly, a new member should install the pre-commit hooks by running:*
+
+```bash
+pre-commit install
+```
 
 ### Question 5
 
@@ -184,7 +197,7 @@ will check the repositories and the code to verify your answers.
 >
 > Answer:
 
---- question 5 fill here ---
+*From the cookiecutter template we have filled out the train.py, model.py, data.py, evaluate.py, api.py, visualize.py, and the tests, dockerfiles folders. We have added a range of different config folders that contains config files for our hydra setup for running our training experiments.*
 
 ### Question 6
 

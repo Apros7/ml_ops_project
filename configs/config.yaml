@@ -1,0 +1,14 @@
+# configs/config.yaml
+defaults:
+  - data: base
+  - model: small
+  - train: default
+  - experiment: debug
+  - _self_
+
+seed: 42
+
+wandb:
+  enabled: true
+  project: ml_ops_number_plates
+  entity: ml_ops_number_plates

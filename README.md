@@ -4,7 +4,7 @@ DTU ML Ops course project
 
 ## Project Description
 
-Overall goal of the project: 
+Overall goal of the project:
 
 Read license plate from image
 

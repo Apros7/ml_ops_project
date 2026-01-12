@@ -1,0 +1,6 @@
+name: "augmented"
+path: "data/"
+batch_size: 64
+num_workers: 4
+shuffle: true
+augmentation: "strong"

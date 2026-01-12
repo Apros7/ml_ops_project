@@ -6,15 +6,20 @@ import typer
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
-from pytorch_lightning.loggers import TensorBoardLogger, CSVLogger
+from pytorch_lightning.loggers import CSVLogger, WandbLogger
+import wandb
 
 from ml_ops.model import PlateDetector, PlateOCR
-from ml_ops.data import CCPDDataModule, export_yolo_format
+from ml_ops.data import CCPDDataModule, export_yolo_format, ENGLISH_NUM_CLASSES, NUM_CLASSES
 
 app = typer.Typer()
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 RUNS_DIR = PROJECT_ROOT / "runs"
+
+# Weights & Biases configuration
+WANDB_ENTITY = "ml_ops_number_plates"
+WANDB_PROJECT = "license-plate-ocr"
 
 
 def get_accelerator(force_cpu: bool = False) -> tuple[str, str]:
@@ -99,6 +104,26 @@ names:
         f.write(data_yaml_content.strip())
 
     print("Step 3: Training YOLOv8...")
+
+    # Initialize W&B for detector training
+    wandb.init(
+        entity=WANDB_ENTITY,
+        project=WANDB_PROJECT,
+        name=f"detector-{name}",
+        config={
+            "architecture": "YOLOv8",
+            "task": "detection",
+            "model_name": model_name,
+            "epochs": epochs,
+            "img_size": img_size,
+            "batch_size": batch_size,
+            "max_train_images": max_train_images,
+            "max_val_images": max_val_images,
+            "dataset": "CCPD2019",
+        },
+    )
+    print(f"📊 Logging to Weights & Biases: {WANDB_ENTITY}/{WANDB_PROJECT}")
+
     detector = PlateDetector(model_name=model_name)
 
     accelerator, _ = get_accelerator()
@@ -114,41 +139,58 @@ names:
         name=name,
     )
 
+    # Finish wandb run
+    wandb.finish()
+
     print(f"\nTraining complete! Results saved to {project_path / name}")
     print(f"  - Training curves: {project_path / name / 'results.png'}")
     print(f"  - Metrics CSV: {project_path / name / 'results.csv'}")
     print(f"  - Best weights: {project_path / name / 'weights' / 'best.pt'}")
+    print(f"  - W&B Dashboard: https://wandb.ai/{WANDB_ENTITY}/{WANDB_PROJECT}")
 
 
 @app.command()
 def train_ocr(
     data_dir: Path = typer.Argument(..., help="Path to CCPD dataset directory"),
     split_dir: Path = typer.Option(None, help="Directory containing train/val/test split files"),
-    batch_size: int = typer.Option(128, help="Batch size"),
+    batch_size: int = typer.Option(64, help="Batch size"),
     max_epochs: int = typer.Option(15, help="Maximum number of epochs"),
-    learning_rate: float = typer.Option(3e-3, help="Learning rate"),
-    hidden_size: int = typer.Option(128, help="LSTM hidden size"),
-    num_layers: int = typer.Option(1, help="Number of LSTM layers"),
-    img_height: int = typer.Option(32, help="Input image height"),
-    img_width: int = typer.Option(100, help="Input image width"),
-    max_train_images: int = typer.Option(5000, help="Maximum training images"),
-    max_val_images: int = typer.Option(1000, help="Maximum validation images"),
+    learning_rate: float = typer.Option(1e-3, help="Learning rate"),
+    hidden_size: int = typer.Option(256, help="LSTM hidden size"),
+    num_layers: int = typer.Option(2, help="Number of LSTM layers"),
+    img_height: int = typer.Option(32, help="Input image height (32 required for model architecture)"),
+    img_width: int = typer.Option(200, help="Input image width (larger = better quality, more compute)"),
+    max_images: int = typer.Option(5000, help="Maximum total images (80%% train, 20%% val)"),
     num_workers: int = typer.Option(4, help="Number of dataloader workers"),
     project: str = typer.Option(None, help="Project directory for saving results"),
     name: str = typer.Option("plate_ocr", help="Experiment name"),
+    english_only: bool = typer.Option(True, help="Only predict English chars (no Chinese province)"),
 ) -> None:
     """Train the license plate OCR model using PyTorch Lightning.
 
-    Optimized defaults for ~15 min training:
-    - 5000 train images, 1000 val images
-    - 15 epochs
-    - Smaller model (hidden_size=128, 1 LSTM layer)
-    - Larger batch size (128)
+    By default, uses English-only mode which:
+    - Predicts only 6 characters (positions 2-7, skips Chinese province)
+    - Uses a smaller character set (34 vs 69 classes)
+    - Is much easier to learn and more practical for most use cases
+
+    Example:
+        uv run python -m ml_ops.train train-ocr data/ccpd_base --max-images 100
+        uv run python -m ml_ops.train train-ocr data/ccpd_base --no-english-only  # Full mode
     """
+    max_train_images = int(max_images * 0.8)
+    max_val_images = max_images - max_train_images
+    print(f"Max images: {max_images} -> {max_train_images} train, {max_val_images} val")
     project_path = Path(project) if project else RUNS_DIR / "ocr"
     project_path.mkdir(parents=True, exist_ok=True)
 
+    mode_str = "English-only (6 chars)" if english_only else "Full (7 chars with Chinese)"
+    print(f"OCR Mode: {mode_str}")
+
+    output_dir = project_path / name / "predictions"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     print(f"Results will be saved to: {project_path / name}")
+    print(f"Prediction visualizations will be saved to: {output_dir}")
     print("Setting up data module...")
     data_module = CCPDDataModule(
         data_dir=data_dir,
@@ -160,9 +202,10 @@ def train_ocr(
         img_width=img_width,
         max_train_images=max_train_images,
         max_val_images=max_val_images,
+        english_only=english_only,
     )
 
-    print("Creating model...")
+    print("Creating CRNN model...")
     model = PlateOCR(
         img_height=img_height,
         img_width=img_width,
@@ -170,6 +213,8 @@ def train_ocr(
         num_layers=num_layers,
         learning_rate=learning_rate,
         max_epochs=max_epochs,
+        output_dir=str(output_dir),
+        english_only=english_only,
     )
 
     checkpoint_dir = project_path / name / "checkpoints"
@@ -191,14 +236,35 @@ def train_ocr(
         LearningRateMonitor(logging_interval="step"),
     ]
 
-    tb_logger = TensorBoardLogger(
-        save_dir=str(project_path),
-        name=name,
-    )
     csv_logger = CSVLogger(
         save_dir=str(project_path),
         name=name,
     )
+
+    # Weights & Biases logger
+    wandb_logger = WandbLogger(
+        entity=WANDB_ENTITY,
+        project=WANDB_PROJECT,
+        name=f"ocr-{name}",
+        save_dir=str(project_path),
+        config={
+            "architecture": "CRNN",
+            "task": "OCR",
+            "english_only": english_only,
+            "num_classes": ENGLISH_NUM_CLASSES if english_only else NUM_CLASSES,
+            "img_height": img_height,
+            "img_width": img_width,
+            "hidden_size": hidden_size,
+            "num_layers": num_layers,
+            "learning_rate": learning_rate,
+            "batch_size": batch_size,
+            "max_epochs": max_epochs,
+            "max_train_images": max_train_images,
+            "max_val_images": max_val_images,
+            "dataset": "CCPD2019",
+        },
+    )
+    print(f"📊 Logging to Weights & Biases: {WANDB_ENTITY}/{WANDB_PROJECT}")
 
     # CTC loss is not supported on MPS (Apple Silicon), so force CPU on Mac
     force_cpu = torch.backends.mps.is_available()
@@ -212,7 +278,7 @@ def train_ocr(
         devices=devices,
         max_epochs=max_epochs,
         callbacks=callbacks,
-        logger=[tb_logger, csv_logger],
+        logger=[csv_logger, wandb_logger],
         precision="16-mixed" if accelerator == "gpu" else 32,
         gradient_clip_val=5.0,
         log_every_n_steps=10,
@@ -220,12 +286,13 @@ def train_ocr(
 
     trainer.fit(model, data_module)
 
+    # Finish wandb run
+    wandb.finish()
+
     print(f"\nTraining complete! Results saved to {project_path / name}")
-    print(f"  - TensorBoard logs: {project_path / name}")
-    print(f"  - Metrics CSV: {project_path / name / 'metrics.csv'}")
+    print(f"  - Metrics CSV: {project_path / name}")
     print(f"  - Checkpoints: {checkpoint_dir}")
-    print("\nTo view training curves, run:")
-    print(f"  tensorboard --logdir {project_path / name}")
+    print(f"  - W&B Dashboard: https://wandb.ai/{WANDB_ENTITY}/{WANDB_PROJECT}")
 
 
 @app.command()
@@ -237,6 +304,7 @@ def train_both(
     ocr_epochs: int = typer.Option(15, help="OCR training epochs"),
     batch_size: int = typer.Option(32, help="Batch size for detector"),
     max_images: int = typer.Option(5000, help="Maximum total images (80%% train, 20%% val)"),
+    english_only: bool = typer.Option(True, help="Only predict English chars (no Chinese province)"),
 ) -> None:
     """Train both detector and OCR models sequentially (~30 min total).
 
@@ -273,18 +341,18 @@ def train_both(
     train_ocr(
         data_dir=data_dir,
         split_dir=split_dir,
-        batch_size=batch_size * 4,
+        batch_size=batch_size * 2,
         max_epochs=ocr_epochs,
-        learning_rate=3e-3,
-        hidden_size=128,
-        num_layers=1,
+        learning_rate=1e-3,
+        hidden_size=256,
+        num_layers=2,
         img_height=32,
-        img_width=100,
-        max_train_images=max_train_images,
-        max_val_images=max_val_images,
+        img_width=200,
+        max_images=max_images,
         num_workers=4,
         project=str(RUNS_DIR / "ocr"),
         name="plate_ocr",
+        english_only=english_only,
     )
 
     print("\n" + "=" * 50)
@@ -293,8 +361,6 @@ def train_both(
     print(f"\nAll results saved to: {RUNS_DIR}")
     print(f"  - Detector results: {RUNS_DIR / 'detect' / 'plate_detection'}")
     print(f"  - OCR results: {RUNS_DIR / 'ocr' / 'plate_ocr'}")
-    print("\nTo view OCR training curves:")
-    print(f"  tensorboard --logdir {RUNS_DIR / 'ocr'}")
 
 
 if __name__ == "__main__":

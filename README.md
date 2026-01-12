@@ -2,6 +2,24 @@
 
 DTU ML Ops course project
 
+## Project Description
+
+Overall goal of the project: 
+
+Read license plate from image
+
+What data are you going to run on (initially, may change):
+
+The data comes from 2 datasets, one with license plates from this source:
+https://www.kaggle.com/datasets/raj4126/alpr-license-plates
+
+And ine of chinese license plates from this source:
+https://www.kaggle.com/datasets/binh234/ccpd2019
+
+What models do you expect to use:
+
+We are going to use object detection models such as YOLO and recogntion models based on CNNs.
+
 ## Project structure
 
 The directory structure of the project looks like this:

@@ -568,6 +568,13 @@ def export_yolo_format(
     output_dir = Path(output_dir)
     images_dir = output_dir / "images"
     labels_dir = output_dir / "labels"
+
+    if images_dir.exists():
+        print(f"Clearing old data from {images_dir}...")
+        shutil.rmtree(images_dir)
+    if labels_dir.exists():
+        shutil.rmtree(labels_dir)
+
     images_dir.mkdir(parents=True, exist_ok=True)
     labels_dir.mkdir(parents=True, exist_ok=True)
 

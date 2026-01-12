@@ -184,3 +184,4 @@ cython_debug/
 /data
 test.py
 yolov8n.pt
+runs/

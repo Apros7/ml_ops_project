@@ -6,20 +6,28 @@ import typer
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
-from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.loggers import TensorBoardLogger, CSVLogger
 
 from ml_ops.model import PlateDetector, PlateOCR
 from ml_ops.data import CCPDDataModule, export_yolo_format
 
 app = typer.Typer()
 
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+RUNS_DIR = PROJECT_ROOT / "runs"
 
-def get_accelerator() -> tuple[str, str]:
+
+def get_accelerator(force_cpu: bool = False) -> tuple[str, str]:
     """Get the appropriate accelerator and device configuration.
+
+    Args:
+        force_cpu: If True, always use CPU (needed for ops not supported on MPS like CTC loss).
 
     Returns:
         Tuple of (accelerator, devices) for Lightning Trainer.
     """
+    if force_cpu:
+        return "cpu", "auto"
     if torch.cuda.is_available():
         return "gpu", "auto"
     elif torch.backends.mps.is_available():
@@ -39,7 +47,7 @@ def train_detector(
     img_size: int = typer.Option(320, help="Input image size (smaller = faster)"),
     max_train_images: int = typer.Option(5000, help="Maximum training images"),
     max_val_images: int = typer.Option(1000, help="Maximum validation images"),
-    project: str = typer.Option("runs/detect", help="Project directory for saving results"),
+    project: str = typer.Option(None, help="Project directory for saving results"),
     name: str = typer.Option("plate_detection", help="Experiment name"),
 ) -> None:
     """Train the license plate detector using YOLOv8.
@@ -54,6 +62,10 @@ def train_detector(
     1. Flat: all images in data_dir (will sample max_train_images + max_val_images)
     2. Split: data_dir/train/ and data_dir/val/ subfolders (uses as-is)
     """
+    project_path = Path(project) if project else RUNS_DIR / "detect"
+    project_path.mkdir(parents=True, exist_ok=True)
+
+    print(f"Results will be saved to: {project_path / name}")
     print("Step 1: Converting CCPD to YOLO format...")
 
     train_output = output_dir / "train"
@@ -98,11 +110,14 @@ names:
         imgsz=img_size,
         batch=batch_size,
         device=device,
-        project=project,
+        project=str(project_path),
         name=name,
     )
 
-    print(f"Training complete! Results saved to {project}/{name}")
+    print(f"\nTraining complete! Results saved to {project_path / name}")
+    print(f"  - Training curves: {project_path / name / 'results.png'}")
+    print(f"  - Metrics CSV: {project_path / name / 'results.csv'}")
+    print(f"  - Best weights: {project_path / name / 'weights' / 'best.pt'}")
 
 
 @app.command()
@@ -119,7 +134,7 @@ def train_ocr(
     max_train_images: int = typer.Option(5000, help="Maximum training images"),
     max_val_images: int = typer.Option(1000, help="Maximum validation images"),
     num_workers: int = typer.Option(4, help="Number of dataloader workers"),
-    project: str = typer.Option("runs/ocr", help="Project directory for saving results"),
+    project: str = typer.Option(None, help="Project directory for saving results"),
     name: str = typer.Option("plate_ocr", help="Experiment name"),
 ) -> None:
     """Train the license plate OCR model using PyTorch Lightning.
@@ -130,6 +145,10 @@ def train_ocr(
     - Smaller model (hidden_size=128, 1 LSTM layer)
     - Larger batch size (128)
     """
+    project_path = Path(project) if project else RUNS_DIR / "ocr"
+    project_path.mkdir(parents=True, exist_ok=True)
+
+    print(f"Results will be saved to: {project_path / name}")
     print("Setting up data module...")
     data_module = CCPDDataModule(
         data_dir=data_dir,
@@ -153,9 +172,10 @@ def train_ocr(
         max_epochs=max_epochs,
     )
 
+    checkpoint_dir = project_path / name / "checkpoints"
     callbacks = [
         ModelCheckpoint(
-            dirpath=f"{project}/{name}/checkpoints",
+            dirpath=str(checkpoint_dir),
             filename="ocr-{epoch:02d}-{val_accuracy:.4f}",
             monitor="val_accuracy",
             mode="max",
@@ -171,20 +191,28 @@ def train_ocr(
         LearningRateMonitor(logging_interval="step"),
     ]
 
-    logger = TensorBoardLogger(
-        save_dir=project,
+    tb_logger = TensorBoardLogger(
+        save_dir=str(project_path),
+        name=name,
+    )
+    csv_logger = CSVLogger(
+        save_dir=str(project_path),
         name=name,
     )
 
-    accelerator, devices = get_accelerator()
+    # CTC loss is not supported on MPS (Apple Silicon), so force CPU on Mac
+    force_cpu = torch.backends.mps.is_available()
+    accelerator, devices = get_accelerator(force_cpu=force_cpu)
 
+    if force_cpu:
+        print("Note: Using CPU for OCR training (CTC loss not supported on MPS)")
     print(f"Training on {accelerator}...")
     trainer = pl.Trainer(
         accelerator=accelerator,
         devices=devices,
         max_epochs=max_epochs,
         callbacks=callbacks,
-        logger=logger,
+        logger=[tb_logger, csv_logger],
         precision="16-mixed" if accelerator == "gpu" else 32,
         gradient_clip_val=5.0,
         log_every_n_steps=10,
@@ -192,7 +220,12 @@ def train_ocr(
 
     trainer.fit(model, data_module)
 
-    print(f"Training complete! Results saved to {project}/{name}")
+    print(f"\nTraining complete! Results saved to {project_path / name}")
+    print(f"  - TensorBoard logs: {project_path / name}")
+    print(f"  - Metrics CSV: {project_path / name / 'metrics.csv'}")
+    print(f"  - Checkpoints: {checkpoint_dir}")
+    print("\nTo view training curves, run:")
+    print(f"  tensorboard --logdir {project_path / name}")
 
 
 @app.command()
@@ -203,13 +236,20 @@ def train_both(
     detector_epochs: int = typer.Option(10, help="Detector training epochs"),
     ocr_epochs: int = typer.Option(15, help="OCR training epochs"),
     batch_size: int = typer.Option(32, help="Batch size for detector"),
-    max_train_images: int = typer.Option(5000, help="Maximum training images"),
-    max_val_images: int = typer.Option(1000, help="Maximum validation images"),
-    project: str = typer.Option("runs", help="Project directory"),
+    max_images: int = typer.Option(5000, help="Maximum total images (80%% train, 20%% val)"),
 ) -> None:
-    """Train both detector and OCR models sequentially (~30 min total)."""
+    """Train both detector and OCR models sequentially (~30 min total).
+
+    Example:
+        uv run python -m ml_ops.train train-both data/ccpd_small --max-images 5000
+    """
+    max_train_images = int(max_images * 0.8)
+    max_val_images = max_images - max_train_images
+
+    print(f"Max images: {max_images} -> {max_train_images} train, {max_val_images} val")
+    print(f"Results will be saved to: {RUNS_DIR}")
     print("=" * 50)
-    print("PHASE 1: Training License Plate Detector (~15 min)")
+    print("PHASE 1: Training License Plate Detector")
     print("=" * 50)
 
     train_detector(
@@ -222,12 +262,12 @@ def train_both(
         img_size=320,
         max_train_images=max_train_images,
         max_val_images=max_val_images,
-        project=f"{project}/detect",
+        project=str(RUNS_DIR / "detect"),
         name="plate_detection",
     )
 
     print("\n" + "=" * 50)
-    print("PHASE 2: Training License Plate OCR (~15 min)")
+    print("PHASE 2: Training License Plate OCR")
     print("=" * 50)
 
     train_ocr(
@@ -243,13 +283,18 @@ def train_both(
         max_train_images=max_train_images,
         max_val_images=max_val_images,
         num_workers=4,
-        project=f"{project}/ocr",
+        project=str(RUNS_DIR / "ocr"),
         name="plate_ocr",
     )
 
     print("\n" + "=" * 50)
     print("TRAINING COMPLETE!")
     print("=" * 50)
+    print(f"\nAll results saved to: {RUNS_DIR}")
+    print(f"  - Detector results: {RUNS_DIR / 'detect' / 'plate_detection'}")
+    print(f"  - OCR results: {RUNS_DIR / 'ocr' / 'plate_ocr'}")
+    print("\nTo view OCR training curves:")
+    print(f"  tensorboard --logdir {RUNS_DIR / 'ocr'}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,46 @@
+# Training configuration for license plate recognition
+
+# Data paths
+data:
+  ccpd_dir: "data/raw/ccpd"
+  split_dir: "data/raw/ccpd/splits"
+  processed_dir: "data/processed"
+
+# Detection model configuration
+detector:
+  model_name: "yolov8n.pt"  # Options: yolov8n, yolov8s, yolov8m, yolov8l, yolov8x
+  epochs: 100
+  batch_size: 16
+  img_size: 640
+  conf_threshold: 0.25
+  iou_threshold: 0.5
+
+# OCR model configuration
+ocr:
+  img_height: 48
+  img_width: 168
+  hidden_size: 256
+  num_layers: 2
+  dropout: 0.1
+  learning_rate: 0.001
+  max_epochs: 100
+  batch_size: 64
+
+# Training settings
+training:
+  num_workers: 4
+  accelerator: "auto"  # auto, gpu, cpu, mps
+  precision: "16-mixed"  # 16-mixed, 32, bf16-mixed
+  gradient_clip_val: 5.0
+
+# Logging and checkpoints
+output:
+  project: "runs"
+  detector_name: "plate_detection"
+  ocr_name: "plate_ocr"
+
+# Early stopping
+early_stopping:
+  patience: 15
+  monitor: "val_accuracy"
+  mode: "max"

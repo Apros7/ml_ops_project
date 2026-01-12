@@ -1,5 +1,5 @@
 [core]
     remote = storage
 ['remote "storage"']
-    url = gs://alpr_license_plates
+    url = gs://ccpd_base
     credentialpath = ../mlops-license-plate-484109-c1ac634a105d.json

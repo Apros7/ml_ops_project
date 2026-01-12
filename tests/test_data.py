@@ -1,7 +1,6 @@
 """Tests for data loading and preprocessing."""
 
 import pytest
-import torch
 
 from ml_ops.data import (
     parse_ccpd_filename,

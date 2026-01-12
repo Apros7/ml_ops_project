@@ -1,14 +1,15 @@
 """Data loading and preprocessing for CCPD (Chinese City Parking Dataset)."""
 
+import shutil
+import time
 from pathlib import Path
 from typing import Any
 
 import cv2
-import numpy as np
 import torch
 import typer
-from PIL import Image
 from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
 import pytorch_lightning as pl
 
 
@@ -321,7 +322,7 @@ def ocr_collate_fn(batch: list[dict]) -> dict[str, Any]:
     label_lengths = torch.stack([item["label_length"] for item in batch])
     plate_texts = [item["plate_text"] for item in batch]
 
-    max_len = max(len(l) for l in labels)
+    max_len = max(len(label) for label in labels)
     padded_labels = torch.zeros(len(batch), max_len, dtype=torch.long)
     for i, label in enumerate(labels):
         padded_labels[i, : len(label)] = label
@@ -430,39 +431,62 @@ class CCPDDataModule(pl.LightningDataModule):
         )
 
 
-def export_yolo_format(data_dir: Path, output_dir: Path, split_file: Path | None = None) -> None:
+def export_yolo_format(
+    data_dir: Path,
+    output_dir: Path,
+    split_file: Path | None = None,
+    max_images: int = 50000,
+) -> None:
     """Export CCPD dataset to YOLO format for training with Ultralytics.
 
     Args:
         data_dir: Root directory containing CCPD images.
         output_dir: Output directory for YOLO format dataset.
         split_file: Optional split file.
+        max_images: Maximum number of images to export (default: 50000).
     """
+    start_time = time.time()
+
     output_dir = Path(output_dir)
     images_dir = output_dir / "images"
     labels_dir = output_dir / "labels"
     images_dir.mkdir(parents=True, exist_ok=True)
     labels_dir.mkdir(parents=True, exist_ok=True)
 
+    print(f"Scanning for images in {data_dir}...")
     image_paths = []
     if split_file and split_file.exists():
+        print(f"Using split file: {split_file}")
         with open(split_file) as f:
             for line in f:
                 img_path = data_dir / line.strip()
                 if img_path.exists():
                     image_paths.append(img_path)
     else:
+        print("No split file provided, scanning all images...")
         for ext in ["*.jpg", "*.jpeg", "*.png"]:
             image_paths.extend(data_dir.rglob(ext))
 
-    for img_path in image_paths:
+    if len(image_paths) > max_images:
+        print(f"Limiting to {max_images} images (found {len(image_paths)})")
+        image_paths = image_paths[:max_images]
+
+    print(f"Processing {len(image_paths)} images")
+
+    exported = 0
+    skipped_parse = 0
+    skipped_read = 0
+
+    for img_path in tqdm(image_paths, desc="Exporting to YOLO format", unit="img"):
         try:
             annotation = parse_ccpd_filename(img_path.name)
         except (ValueError, IndexError):
+            skipped_parse += 1
             continue
 
         image = cv2.imread(str(img_path))
         if image is None:
+            skipped_read += 1
             continue
         h, w = image.shape[:2]
 
@@ -472,14 +496,23 @@ def export_yolo_format(data_dir: Path, output_dir: Path, split_file: Path | None
         width = (x_max - x_min) / w
         height = (y_max - y_min) / h
 
-        import shutil
         shutil.copy(img_path, images_dir / img_path.name)
 
         label_file = labels_dir / (img_path.stem + ".txt")
         with open(label_file, "w") as f:
             f.write(f"0 {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
 
-    print(f"Exported {len(image_paths)} images to YOLO format at {output_dir}")
+        exported += 1
+
+    elapsed = time.time() - start_time
+    print(f"\n{'='*50}")
+    print("Export complete!")
+    print(f"  Exported: {exported} images")
+    print(f"  Skipped (parse error): {skipped_parse}")
+    print(f"  Skipped (read error): {skipped_read}")
+    print(f"  Output directory: {output_dir}")
+    print(f"  Time elapsed: {elapsed:.1f}s ({exported/elapsed:.1f} img/s)")
+    print(f"{'='*50}")
 
 
 def preprocess(data_path: Path, output_folder: Path) -> None:

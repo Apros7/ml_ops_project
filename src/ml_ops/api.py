@@ -1,6 +1,5 @@
 """FastAPI endpoint for license plate recognition."""
 
-import io
 import tempfile
 from pathlib import Path
 

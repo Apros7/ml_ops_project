@@ -1,6 +1,5 @@
 """Tests for model architectures."""
 
-import pytest
 import torch
 
 from ml_ops.model import CRNN, PlateOCR

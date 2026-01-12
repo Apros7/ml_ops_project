@@ -1,5 +1,8 @@
 """Models for license plate detection and OCR."""
 
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,7 +11,14 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import OneCycleLR
 from ultralytics import YOLO
 
-from ml_ops.data import NUM_CLASSES, BLANK_IDX, indices_to_plate_text
+from ml_ops.data import (
+    NUM_CLASSES,
+    BLANK_IDX,
+    indices_to_plate_text,
+    ENGLISH_NUM_CLASSES,
+    ENGLISH_BLANK_IDX,
+    english_indices_to_plate_text,
+)
 
 
 class PlateDetector(pl.LightningModule):
@@ -117,64 +127,78 @@ class PlateDetector(pl.LightningModule):
 class CRNN(nn.Module):
     """CRNN (Convolutional Recurrent Neural Network) for OCR.
 
-    Architecture:
-    - CNN backbone for feature extraction
+    Architecture designed specifically for license plate OCR:
+    - VGG-style CNN that preserves width (critical for CTC loss)
+    - Uses (2,1) pooling to reduce height while keeping width
+    - Produces sequence length ~24 for input width 100
     - Bidirectional LSTM for sequence modeling
     - Linear layer for character classification
+
+    Supports two modes:
+    - Full mode (default): Predicts all 7 characters including Chinese province
+    - English-only mode: Predicts only 6 characters (positions 2-7, no Chinese)
     """
 
     def __init__(
         self,
         img_height: int = 32,
-        img_width: int = 100,
+        img_width: int = 200,
         num_classes: int = NUM_CLASSES,
-        hidden_size: int = 128,
-        num_layers: int = 1,
-        dropout: float = 0.1,
+        hidden_size: int = 256,
+        num_layers: int = 2,
+        dropout: float = 0.3,
+        english_only: bool = False,
     ) -> None:
         """Initialize CRNN.
 
         Args:
-            img_height: Input image height.
-            img_width: Input image width.
-            num_classes: Number of character classes.
+            img_height: Input image height (must be 32 for architecture).
+            img_width: Input image width (200 gives seq_len ~49).
+            num_classes: Number of character classes (ignored if english_only=True).
             hidden_size: LSTM hidden size.
             num_layers: Number of LSTM layers.
             dropout: Dropout rate.
+            english_only: If True, use English-only character set (34 chars vs 69).
         """
         super().__init__()
-        self.num_classes = num_classes
+        self.english_only = english_only
+
+        # Override num_classes for English-only mode
+        if english_only:
+            self.num_classes = ENGLISH_NUM_CLASSES  # 34 (A-Z no I/O + 0-9)
+        else:
+            self.num_classes = num_classes
 
         self.cnn = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(3, 64, 3, 1, 1),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(64, 128, 3, 1, 1),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
-            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1)),
-            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(128, 256, 3, 1, 1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(256, 256, 3, 1, 1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1)),
-            nn.Conv2d(256, 256, kernel_size=2, stride=1, padding=0),
-            nn.BatchNorm2d(256),
+            nn.MaxPool2d((2, 1), (2, 1)),
+            nn.Conv2d(256, 512, 3, 1, 1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, 3, 1, 1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d((2, 1), (2, 1)),
+            nn.Conv2d(512, 512, 2, 1, 0),
+            nn.BatchNorm2d(512),
             nn.ReLU(inplace=True),
         )
 
         self.rnn = nn.LSTM(
-            input_size=256,
+            input_size=512,
             hidden_size=hidden_size,
             num_layers=num_layers,
             bidirectional=True,
@@ -183,6 +207,22 @@ class CRNN(nn.Module):
         )
 
         self.fc = nn.Linear(hidden_size * 2, num_classes + 1)
+
+        self._init_weights()
+
+    def _init_weights(self) -> None:
+        """Initialize weights using Kaiming initialization."""
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, 0, 0.01)
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass.
@@ -207,17 +247,25 @@ class CRNN(nn.Module):
 
 
 class PlateOCR(pl.LightningModule):
-    """PyTorch Lightning module for license plate OCR."""
+    """PyTorch Lightning module for license plate OCR.
+
+    Supports two modes:
+    - Full mode: Predicts all 7 characters including Chinese province
+    - English-only mode: Predicts only 6 characters (positions 2-7, no Chinese)
+      Uses a smaller character set (34 vs 69) which is easier to learn.
+    """
 
     def __init__(
         self,
         img_height: int = 32,
-        img_width: int = 100,
-        hidden_size: int = 128,
-        num_layers: int = 1,
-        dropout: float = 0.1,
-        learning_rate: float = 3e-3,
+        img_width: int = 200,
+        hidden_size: int = 256,
+        num_layers: int = 2,
+        dropout: float = 0.3,
+        learning_rate: float = 1e-3,
         max_epochs: int = 15,
+        output_dir: str | None = None,
+        english_only: bool = False,
     ) -> None:
         """Initialize PlateOCR module.
 
@@ -229,9 +277,13 @@ class PlateOCR(pl.LightningModule):
             dropout: Dropout rate.
             learning_rate: Learning rate.
             max_epochs: Maximum epochs for OneCycleLR scheduler.
+            output_dir: Directory to save prediction visualizations.
+            english_only: If True, predict only English chars (positions 2-7).
         """
         super().__init__()
         self.save_hyperparameters()
+
+        self.english_only = english_only
 
         self.model = CRNN(
             img_height=img_height,
@@ -239,11 +291,21 @@ class PlateOCR(pl.LightningModule):
             hidden_size=hidden_size,
             num_layers=num_layers,
             dropout=dropout,
+            english_only=english_only,
         )
 
-        self.ctc_loss = nn.CTCLoss(blank=BLANK_IDX, zero_infinity=True)
+        # Use appropriate blank index based on mode
+        blank_idx = ENGLISH_BLANK_IDX if english_only else BLANK_IDX
+        self.ctc_loss = nn.CTCLoss(blank=blank_idx, zero_infinity=True)
         self.learning_rate = learning_rate
         self.max_epochs = max_epochs
+        self.output_dir = Path(output_dir) if output_dir else None
+
+        self.val_samples: list[dict] = []
+
+        if english_only:
+            print("📝 English-only mode: Predicting 6 characters (positions 2-7)")
+            print(f"   Character set: A-Z (no I,O) + 0-9 = {ENGLISH_NUM_CLASSES} classes")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass.
@@ -255,6 +317,35 @@ class PlateOCR(pl.LightningModule):
             Log probabilities for CTC decoding.
         """
         return self.model(x)
+
+    def _calculate_char_accuracy(self, pred: str, gt: str) -> float:
+        """Calculate character-level accuracy between prediction and ground truth."""
+        if len(gt) == 0:
+            return 1.0 if len(pred) == 0 else 0.0
+        correct = sum(1 for p, g in zip(pred, gt) if p == g)
+        return correct / max(len(pred), len(gt))
+
+    def _calculate_edit_distance(self, pred: str, gt: str) -> int:
+        """Calculate Levenshtein edit distance between prediction and ground truth."""
+        if len(pred) == 0:
+            return len(gt)
+        if len(gt) == 0:
+            return len(pred)
+
+        # Dynamic programming for edit distance
+        dp = [[0] * (len(gt) + 1) for _ in range(len(pred) + 1)]
+        for i in range(len(pred) + 1):
+            dp[i][0] = i
+        for j in range(len(gt) + 1):
+            dp[0][j] = j
+
+        for i in range(1, len(pred) + 1):
+            for j in range(1, len(gt) + 1):
+                if pred[i - 1] == gt[j - 1]:
+                    dp[i][j] = dp[i - 1][j - 1]
+                else:
+                    dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+        return dp[len(pred)][len(gt)]
 
     def training_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
         """Training step.
@@ -269,6 +360,7 @@ class PlateOCR(pl.LightningModule):
         images = batch["images"]
         labels = batch["labels"]
         label_lengths = batch["label_lengths"]
+        plate_texts = batch["plate_texts"]
 
         log_probs = self(images)
 
@@ -276,11 +368,18 @@ class PlateOCR(pl.LightningModule):
         batch_size = log_probs.size(1)
         input_lengths = torch.full((batch_size,), seq_len, dtype=torch.long, device=self.device)
 
-        labels_flat = labels[labels != 0]
-        if labels_flat.numel() == 0:
-            labels_flat = labels.flatten()
+        labels_flat = labels.flatten()
 
         loss = self.ctc_loss(log_probs, labels_flat, input_lengths, label_lengths)
+
+        # Decode predictions for training metrics (every 50 steps to save compute)
+        if batch_idx % 50 == 0:
+            preds = self.decode(log_probs)
+            train_correct = sum(1 for pred, gt in zip(preds, plate_texts) if pred == gt)
+            train_accuracy = train_correct / len(plate_texts)
+            train_char_acc = sum(self._calculate_char_accuracy(p, g) for p, g in zip(preds, plate_texts)) / len(preds)
+            self.log("train_accuracy", train_accuracy, on_step=True, prog_bar=False)
+            self.log("train_char_accuracy", train_char_acc, on_step=True, prog_bar=False)
 
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
@@ -306,9 +405,7 @@ class PlateOCR(pl.LightningModule):
         batch_size = log_probs.size(1)
         input_lengths = torch.full((batch_size,), seq_len, dtype=torch.long, device=self.device)
 
-        labels_flat = labels[labels != 0]
-        if labels_flat.numel() == 0:
-            labels_flat = labels.flatten()
+        labels_flat = labels.flatten()
 
         loss = self.ctc_loss(log_probs, labels_flat, input_lengths, label_lengths)
 
@@ -316,10 +413,84 @@ class PlateOCR(pl.LightningModule):
         correct = sum(1 for pred, gt in zip(preds, plate_texts) if pred == gt)
         accuracy = correct / len(plate_texts)
 
+        # Calculate additional metrics
+        char_accuracies = [self._calculate_char_accuracy(p, g) for p, g in zip(preds, plate_texts)]
+        avg_char_accuracy = sum(char_accuracies) / len(char_accuracies)
+
+        edit_distances = [self._calculate_edit_distance(p, g) for p, g in zip(preds, plate_texts)]
+        avg_edit_distance = sum(edit_distances) / len(edit_distances)
+
+        # Calculate per-position accuracy (for 6 positions in English-only mode)
+        expected_len = 6 if self.english_only else 7
+        position_correct = [0] * expected_len
+        position_total = [0] * expected_len
+        for pred, gt in zip(preds, plate_texts):
+            for i in range(min(len(pred), len(gt), expected_len)):
+                position_total[i] += 1
+                if pred[i] == gt[i]:
+                    position_correct[i] += 1
+
+        # Log main metrics
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
         self.log("val_accuracy", accuracy, on_epoch=True, prog_bar=True)
+        self.log("val_char_accuracy", avg_char_accuracy, on_epoch=True, prog_bar=False)
+        self.log("val_edit_distance", avg_edit_distance, on_epoch=True, prog_bar=False)
+
+        # Log per-position accuracy
+        for i in range(expected_len):
+            if position_total[i] > 0:
+                pos_acc = position_correct[i] / position_total[i]
+                self.log(f"val_pos_{i+1}_accuracy", pos_acc, on_epoch=True, prog_bar=False)
+
+        if batch_idx == 0 and len(self.val_samples) < 8:
+            num_samples = min(8 - len(self.val_samples), images.size(0))
+            for i in range(num_samples):
+                self.val_samples.append(
+                    {
+                        "image": images[i].cpu(),
+                        "pred": preds[i],
+                        "gt": plate_texts[i],
+                    }
+                )
 
         return {"val_loss": loss, "val_accuracy": accuracy}
+
+    def on_validation_epoch_end(self) -> None:
+        """Save visualization of predictions at the end of each validation epoch."""
+        if not self.val_samples or self.output_dir is None:
+            self.val_samples = []
+            return
+
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        num_samples = min(8, len(self.val_samples))
+        fig, axes = plt.subplots(2, 4, figsize=(16, 6))
+        axes = axes.flatten()
+
+        for i, sample in enumerate(self.val_samples[:num_samples]):
+            img = sample["image"].permute(1, 2, 0).numpy()
+            img = (img - img.min()) / (img.max() - img.min() + 1e-8)
+
+            axes[i].imshow(img)
+            pred, gt = sample["pred"], sample["gt"]
+            color = "green" if pred == gt else "red"
+            axes[i].set_title(f"Pred: {pred}\nGT: {gt}", fontsize=10, color=color)
+            axes[i].axis("off")
+
+        for i in range(num_samples, 8):
+            axes[i].axis("off")
+
+        epoch = self.current_epoch
+        plt.suptitle(f"Epoch {epoch} - Validation Predictions", fontsize=14)
+        plt.tight_layout()
+
+        save_path = self.output_dir / f"epoch_{epoch:03d}_predictions.png"
+        plt.savefig(save_path, dpi=100, bbox_inches="tight")
+        plt.close(fig)
+
+        print(f"\n📊 Saved prediction visualization to: {save_path}")
+
+        self.val_samples = []
 
     def decode(self, log_probs: torch.Tensor) -> list[str]:
         """Decode CTC output using greedy decoding.
@@ -333,16 +504,26 @@ class PlateOCR(pl.LightningModule):
         _, max_indices = torch.max(log_probs, dim=2)
         max_indices = max_indices.permute(1, 0)
 
+        # Use appropriate constants based on mode
+        if self.english_only:
+            blank_idx = ENGLISH_BLANK_IDX
+            num_classes = ENGLISH_NUM_CLASSES
+            decode_fn = english_indices_to_plate_text
+        else:
+            blank_idx = BLANK_IDX
+            num_classes = NUM_CLASSES
+            decode_fn = indices_to_plate_text
+
         decoded = []
         for indices in max_indices:
             chars = []
             prev_idx = -1
             for idx in indices.tolist():
-                if idx != BLANK_IDX and idx != prev_idx:
-                    if idx < NUM_CLASSES:
+                if idx != blank_idx and idx != prev_idx:
+                    if idx < num_classes:
                         chars.append(idx)
                 prev_idx = idx
-            decoded.append(indices_to_plate_text(chars))
+            decoded.append(decode_fn(chars))
 
         return decoded
 

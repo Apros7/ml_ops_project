@@ -116,9 +116,69 @@ ADS = [
 
 CHARS = PROVINCES + ALPHABETS + [c for c in ADS if c not in ALPHABETS]
 CHAR_TO_IDX = {char: idx for idx, char in enumerate(CHARS)}
-IDX_TO_CHAR = {idx: char for char, idx in CHAR_TO_IDX.items()}
+IDX_TO_CHAR = {idx: char for idx, char in enumerate(CHARS)}
 NUM_CLASSES = len(CHARS)
 BLANK_IDX = NUM_CLASSES
+
+# English-only character set (no Chinese provinces, no I/O which aren't used in plates)
+# This is for positions 2-7 of the license plate (6 characters)
+# Position 2: Letter A-Z (no I, O) = 24 chars
+# Positions 3-7: Alphanumeric A-Z (no I, O) + 0-9 = 24 + 10 = 34 chars
+# Combined unique set: 24 letters + 10 digits = 34 characters
+ENGLISH_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789"  # 34 chars (no I, O)
+ENGLISH_CHAR_TO_IDX = {char: idx for idx, char in enumerate(ENGLISH_CHARS)}
+ENGLISH_IDX_TO_CHAR = {idx: char for idx, char in enumerate(ENGLISH_CHARS)}
+ENGLISH_NUM_CLASSES = len(ENGLISH_CHARS)  # 34
+ENGLISH_BLANK_IDX = ENGLISH_NUM_CLASSES  # 34
+
+
+def english_plate_text_to_indices(plate_text: str) -> list[int]:
+    """Convert English part of plate text (positions 2-7) to indices.
+
+    Skips the first character (Chinese province) and encodes only the
+    6 alphanumeric characters.
+
+    Args:
+        plate_text: Full license plate text (7 characters).
+
+    Returns:
+        List of 6 character indices for positions 2-7.
+    """
+    # Skip the first character (province), take characters 2-7 (indices 1-6)
+    english_part = plate_text[1:7] if len(plate_text) >= 7 else plate_text[1:]
+
+    indices = []
+    for char in english_part:
+        char_upper = char.upper()
+        # Handle I/O confusion - these shouldn't appear but just in case
+        if char_upper == "I":
+            char_upper = "1"
+        elif char_upper == "O":
+            char_upper = "0"
+
+        if char_upper in ENGLISH_CHAR_TO_IDX:
+            indices.append(ENGLISH_CHAR_TO_IDX[char_upper])
+        else:
+            # Unknown character, use 0 as fallback
+            indices.append(0)
+
+    return indices
+
+
+def english_indices_to_plate_text(indices: list[int]) -> str:
+    """Convert English character indices back to plate text.
+
+    Args:
+        indices: List of character indices.
+
+    Returns:
+        Plate text string (6 characters, English only).
+    """
+    chars = []
+    for idx in indices:
+        if 0 <= idx < ENGLISH_NUM_CLASSES:
+            chars.append(ENGLISH_IDX_TO_CHAR[idx])
+    return "".join(chars)
 
 
 def parse_ccpd_filename(filename: str) -> dict[str, Any]:
@@ -179,6 +239,11 @@ def parse_ccpd_filename(filename: str) -> dict[str, Any]:
 def plate_text_to_indices(plate_text: str) -> list[int]:
     """Convert plate text to character indices for CTC loss.
 
+    CHARS layout:
+    - Indices 0-33: Provinces (34 Chinese province chars)
+    - Indices 34-58: Alphabets (25 chars: A-Z except I, plus O)
+    - Indices 59-68: Digits (0-9)
+
     Args:
         plate_text: License plate text string.
 
@@ -186,17 +251,24 @@ def plate_text_to_indices(plate_text: str) -> list[int]:
         List of character indices.
     """
     indices = []
+
     province_char = plate_text[0]
-    if province_char in PROVINCES:
-        indices.append(CHAR_TO_IDX[province_char])
-    else:
-        indices.append(CHAR_TO_IDX["O"])
+    try:
+        idx = PROVINCES.index(province_char)
+    except ValueError:
+        idx = len(PROVINCES) - 1
+    indices.append(idx)
 
     for char in plate_text[1:]:
-        if char in CHAR_TO_IDX:
-            indices.append(CHAR_TO_IDX[char])
+        if char.isdigit():
+            idx = len(PROVINCES) + len(ALPHABETS) + int(char)
         else:
-            indices.append(CHAR_TO_IDX["O"])
+            try:
+                idx = len(PROVINCES) + ALPHABETS.index(char)
+            except ValueError:
+                idx = len(PROVINCES) + len(ALPHABETS) - 1
+        indices.append(idx)
+
     return indices
 
 
@@ -210,11 +282,14 @@ def indices_to_plate_text(indices: list[int]) -> str:
         License plate text string.
     """
     chars = []
-    for idx in indices:
+    for i, idx in enumerate(indices):
         if idx < len(CHARS):
             char = IDX_TO_CHAR[idx]
-            if char != "O":
-                chars.append(char)
+            if i == 0 and char == "O":
+                continue
+            if i == 1 and char == "O":
+                continue
+            chars.append(char)
     return "".join(chars)
 
 
@@ -310,24 +385,27 @@ class CCPDOCRDataset(Dataset):
         data_dir: Path,
         split_file: Path | None = None,
         img_height: int = 32,
-        img_width: int = 100,
+        img_width: int = 200,
         transform=None,
         max_images: int | None = None,
+        english_only: bool = False,
     ) -> None:
         """Initialize the OCR dataset.
 
         Args:
             data_dir: Root directory containing CCPD images.
             split_file: Optional file with list of image paths.
-            img_height: Target image height for OCR.
-            img_width: Target image width for OCR.
+            img_height: Target image height for OCR (32 required for model).
+            img_width: Target image width for OCR (larger = better quality).
             transform: Optional additional transforms.
             max_images: Maximum number of images to use.
+            english_only: If True, only encode positions 2-7 (skip Chinese province).
         """
         self.data_dir = Path(data_dir)
         self.img_height = img_height
         self.img_width = img_width
         self.transform = transform
+        self.english_only = english_only
         self.image_paths: list[Path] = []
         self.annotations: list[dict] = []
 
@@ -395,14 +473,23 @@ class CCPDOCRDataset(Dataset):
         if not isinstance(plate_img, torch.Tensor):
             plate_img = torch.from_numpy(plate_img).permute(2, 0, 1).float() / 255.0
 
-        label_indices = plate_text_to_indices(plate_text)
+        # Use English-only encoding if specified (positions 2-7, 6 chars)
+        if self.english_only:
+            label_indices = english_plate_text_to_indices(plate_text)
+            # For English-only, we return the English part of the plate text (no province)
+            english_text = plate_text[1:7] if len(plate_text) >= 7 else plate_text[1:]
+            return_plate_text = english_text
+        else:
+            label_indices = plate_text_to_indices(plate_text)
+            return_plate_text = plate_text
+
         label = torch.tensor(label_indices, dtype=torch.long)
 
         return {
             "image": plate_img,
             "label": label,
             "label_length": torch.tensor(len(label_indices), dtype=torch.long),
-            "plate_text": plate_text,
+            "plate_text": return_plate_text,
             "image_path": str(img_path),
         }
 
@@ -445,9 +532,10 @@ class CCPDDataModule(pl.LightningDataModule):
         batch_size: int = 32,
         num_workers: int = 4,
         img_height: int = 32,
-        img_width: int = 100,
+        img_width: int = 200,
         max_train_images: int = 5000,
         max_val_images: int = 1000,
+        english_only: bool = False,
     ) -> None:
         """Initialize the DataModule.
 
@@ -461,6 +549,7 @@ class CCPDDataModule(pl.LightningDataModule):
             img_width: Image width for OCR task.
             max_train_images: Maximum number of training images.
             max_val_images: Maximum number of validation images.
+            english_only: If True, only encode positions 2-7 (skip Chinese province).
         """
         super().__init__()
         self.data_dir = Path(data_dir)
@@ -472,6 +561,7 @@ class CCPDDataModule(pl.LightningDataModule):
         self.img_width = img_width
         self.max_train_images = max_train_images
         self.max_val_images = max_val_images
+        self.english_only = english_only
 
         self.train_dataset = None
         self.val_dataset = None
@@ -490,7 +580,7 @@ class CCPDDataModule(pl.LightningDataModule):
         dataset_class = CCPDDetectionDataset if self.task == "detection" else CCPDOCRDataset
         kwargs = {}
         if self.task == "ocr":
-            kwargs = {"img_height": self.img_height, "img_width": self.img_width}
+            kwargs = {"img_height": self.img_height, "img_width": self.img_width, "english_only": self.english_only}
 
         train_dir = self.data_dir / "train" if (self.data_dir / "train").exists() else self.data_dir
         val_dir = self.data_dir / "val" if (self.data_dir / "val").exists() else self.data_dir

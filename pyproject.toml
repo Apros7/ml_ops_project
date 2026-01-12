@@ -16,7 +16,7 @@ classifiers = [
   "Programming Language :: Python :: 3",
 ]
 readme = "README.md"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.11,<3.14"
 dependencies = [
     "dvc>=3.66.1",
     "dvc-gs>=3.0.2",
@@ -33,6 +33,7 @@ dependencies = [
     "opencv-python>=4.8.0",
     "numpy>=1.24.0",
     "loguru>=0.7.3",
+    "tqdm>=4.65.0",
 ]
 
 [dependency-groups]

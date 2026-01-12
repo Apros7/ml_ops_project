@@ -34,29 +34,44 @@ def train_detector(
     output_dir: Path = typer.Option(Path("data/processed/yolo"), help="Output directory for YOLO format data"),
     split_dir: Path = typer.Option(None, help="Directory containing train/val/test split files"),
     model_name: str = typer.Option("yolov8n.pt", help="YOLOv8 model variant"),
-    epochs: int = typer.Option(100, help="Number of training epochs"),
-    batch_size: int = typer.Option(16, help="Batch size"),
-    img_size: int = typer.Option(640, help="Input image size"),
+    epochs: int = typer.Option(10, help="Number of training epochs"),
+    batch_size: int = typer.Option(32, help="Batch size"),
+    img_size: int = typer.Option(320, help="Input image size (smaller = faster)"),
+    max_train_images: int = typer.Option(5000, help="Maximum training images"),
+    max_val_images: int = typer.Option(1000, help="Maximum validation images"),
     project: str = typer.Option("runs/detect", help="Project directory for saving results"),
     name: str = typer.Option("plate_detection", help="Experiment name"),
 ) -> None:
     """Train the license plate detector using YOLOv8.
 
-    This function:
-    1. Converts CCPD data to YOLO format
-    2. Creates a data.yaml config file
-    3. Trains YOLOv8 using Ultralytics native training
+    Optimized defaults for ~15 min training:
+    - 5000 train images, 1000 val images
+    - 10 epochs
+    - 320px image size
+    - batch size 32
+
+    Supports two data layouts:
+    1. Flat: all images in data_dir (will sample max_train_images + max_val_images)
+    2. Split: data_dir/train/ and data_dir/val/ subfolders (uses as-is)
     """
     print("Step 1: Converting CCPD to YOLO format...")
 
     train_output = output_dir / "train"
     val_output = output_dir / "val"
 
+    train_data_dir = data_dir / "train" if (data_dir / "train").exists() else data_dir
+    val_data_dir = data_dir / "val" if (data_dir / "val").exists() else data_dir
+
+    if train_data_dir != data_dir:
+        print(f"Detected pre-split dataset: {data_dir}")
+        print(f"  Train folder: {train_data_dir}")
+        print(f"  Val folder: {val_data_dir}")
+
     train_split = split_dir / "train.txt" if split_dir else None
     val_split = split_dir / "val.txt" if split_dir else None
 
-    export_yolo_format(data_dir, train_output, train_split)
-    export_yolo_format(data_dir, val_output, val_split)
+    export_yolo_format(train_data_dir, train_output, train_split, max_images=max_train_images)
+    export_yolo_format(val_data_dir, val_output, val_split, max_images=max_val_images)
 
     print("Step 2: Creating data.yaml config...")
     data_yaml_path = output_dir / "data.yaml"
@@ -94,20 +109,26 @@ names:
 def train_ocr(
     data_dir: Path = typer.Argument(..., help="Path to CCPD dataset directory"),
     split_dir: Path = typer.Option(None, help="Directory containing train/val/test split files"),
-    batch_size: int = typer.Option(64, help="Batch size"),
-    max_epochs: int = typer.Option(100, help="Maximum number of epochs"),
-    learning_rate: float = typer.Option(1e-3, help="Learning rate"),
-    hidden_size: int = typer.Option(256, help="LSTM hidden size"),
-    num_layers: int = typer.Option(2, help="Number of LSTM layers"),
-    img_height: int = typer.Option(48, help="Input image height"),
-    img_width: int = typer.Option(168, help="Input image width"),
+    batch_size: int = typer.Option(128, help="Batch size"),
+    max_epochs: int = typer.Option(15, help="Maximum number of epochs"),
+    learning_rate: float = typer.Option(3e-3, help="Learning rate"),
+    hidden_size: int = typer.Option(128, help="LSTM hidden size"),
+    num_layers: int = typer.Option(1, help="Number of LSTM layers"),
+    img_height: int = typer.Option(32, help="Input image height"),
+    img_width: int = typer.Option(100, help="Input image width"),
+    max_train_images: int = typer.Option(5000, help="Maximum training images"),
+    max_val_images: int = typer.Option(1000, help="Maximum validation images"),
     num_workers: int = typer.Option(4, help="Number of dataloader workers"),
     project: str = typer.Option("runs/ocr", help="Project directory for saving results"),
     name: str = typer.Option("plate_ocr", help="Experiment name"),
 ) -> None:
     """Train the license plate OCR model using PyTorch Lightning.
 
-    This trains a CRNN model with CTC loss for character recognition.
+    Optimized defaults for ~15 min training:
+    - 5000 train images, 1000 val images
+    - 15 epochs
+    - Smaller model (hidden_size=128, 1 LSTM layer)
+    - Larger batch size (128)
     """
     print("Setting up data module...")
     data_module = CCPDDataModule(
@@ -118,6 +139,8 @@ def train_ocr(
         num_workers=num_workers,
         img_height=img_height,
         img_width=img_width,
+        max_train_images=max_train_images,
+        max_val_images=max_val_images,
     )
 
     print("Creating model...")
@@ -141,7 +164,7 @@ def train_ocr(
         ),
         EarlyStopping(
             monitor="val_accuracy",
-            patience=15,
+            patience=5,
             mode="max",
             verbose=True,
         ),
@@ -177,35 +200,49 @@ def train_both(
     data_dir: Path = typer.Argument(..., help="Path to CCPD dataset directory"),
     split_dir: Path = typer.Option(None, help="Directory containing train/val/test split files"),
     output_dir: Path = typer.Option(Path("data/processed/yolo"), help="Output directory for YOLO format data"),
-    detector_epochs: int = typer.Option(100, help="Detector training epochs"),
-    ocr_epochs: int = typer.Option(100, help="OCR training epochs"),
-    batch_size: int = typer.Option(32, help="Batch size"),
+    detector_epochs: int = typer.Option(10, help="Detector training epochs"),
+    ocr_epochs: int = typer.Option(15, help="OCR training epochs"),
+    batch_size: int = typer.Option(32, help="Batch size for detector"),
+    max_train_images: int = typer.Option(5000, help="Maximum training images"),
+    max_val_images: int = typer.Option(1000, help="Maximum validation images"),
     project: str = typer.Option("runs", help="Project directory"),
 ) -> None:
-    """Train both detector and OCR models sequentially."""
+    """Train both detector and OCR models sequentially (~30 min total)."""
     print("=" * 50)
-    print("PHASE 1: Training License Plate Detector")
+    print("PHASE 1: Training License Plate Detector (~15 min)")
     print("=" * 50)
 
     train_detector(
         data_dir=data_dir,
         output_dir=output_dir,
         split_dir=split_dir,
+        model_name="yolov8n.pt",
         epochs=detector_epochs,
         batch_size=batch_size,
+        img_size=320,
+        max_train_images=max_train_images,
+        max_val_images=max_val_images,
         project=f"{project}/detect",
         name="plate_detection",
     )
 
     print("\n" + "=" * 50)
-    print("PHASE 2: Training License Plate OCR")
+    print("PHASE 2: Training License Plate OCR (~15 min)")
     print("=" * 50)
 
     train_ocr(
         data_dir=data_dir,
         split_dir=split_dir,
+        batch_size=batch_size * 4,
         max_epochs=ocr_epochs,
-        batch_size=batch_size * 2,
+        learning_rate=3e-3,
+        hidden_size=128,
+        num_layers=1,
+        img_height=32,
+        img_width=100,
+        max_train_images=max_train_images,
+        max_val_images=max_val_images,
+        num_workers=4,
         project=f"{project}/ocr",
         name="plate_ocr",
     )

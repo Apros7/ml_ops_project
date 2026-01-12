@@ -221,13 +221,20 @@ def indices_to_plate_text(indices: list[int]) -> str:
 class CCPDDetectionDataset(Dataset):
     """Dataset for license plate detection training with YOLO."""
 
-    def __init__(self, data_dir: Path, split_file: Path | None = None, transform=None) -> None:
+    def __init__(
+        self,
+        data_dir: Path,
+        split_file: Path | None = None,
+        transform=None,
+        max_images: int | None = None,
+    ) -> None:
         """Initialize the detection dataset.
 
         Args:
             data_dir: Root directory containing CCPD images.
             split_file: Optional file with list of image paths for this split.
             transform: Optional transforms to apply.
+            max_images: Maximum number of images to use.
         """
         self.data_dir = Path(data_dir)
         self.transform = transform
@@ -244,6 +251,8 @@ class CCPDDetectionDataset(Dataset):
                 self.image_paths.extend(self.data_dir.rglob(ext))
 
         self.image_paths = sorted(self.image_paths)
+        if max_images and len(self.image_paths) > max_images:
+            self.image_paths = self.image_paths[:max_images]
 
     def __len__(self) -> int:
         """Return dataset size."""
@@ -300,9 +309,10 @@ class CCPDOCRDataset(Dataset):
         self,
         data_dir: Path,
         split_file: Path | None = None,
-        img_height: int = 48,
-        img_width: int = 168,
+        img_height: int = 32,
+        img_width: int = 100,
         transform=None,
+        max_images: int | None = None,
     ) -> None:
         """Initialize the OCR dataset.
 
@@ -312,6 +322,7 @@ class CCPDOCRDataset(Dataset):
             img_height: Target image height for OCR.
             img_width: Target image width for OCR.
             transform: Optional additional transforms.
+            max_images: Maximum number of images to use.
         """
         self.data_dir = Path(data_dir)
         self.img_height = img_height
@@ -331,6 +342,8 @@ class CCPDOCRDataset(Dataset):
                 self.image_paths.extend(self.data_dir.rglob(ext))
 
         self.image_paths = sorted(self.image_paths)
+        if max_images and len(self.image_paths) > max_images:
+            self.image_paths = self.image_paths[:max_images]
 
         for img_path in self.image_paths:
             try:
@@ -431,8 +444,10 @@ class CCPDDataModule(pl.LightningDataModule):
         task: str = "detection",
         batch_size: int = 32,
         num_workers: int = 4,
-        img_height: int = 48,
-        img_width: int = 168,
+        img_height: int = 32,
+        img_width: int = 100,
+        max_train_images: int = 5000,
+        max_val_images: int = 1000,
     ) -> None:
         """Initialize the DataModule.
 
@@ -444,6 +459,8 @@ class CCPDDataModule(pl.LightningDataModule):
             num_workers: Number of dataloader workers.
             img_height: Image height for OCR task.
             img_width: Image width for OCR task.
+            max_train_images: Maximum number of training images.
+            max_val_images: Maximum number of validation images.
         """
         super().__init__()
         self.data_dir = Path(data_dir)
@@ -453,6 +470,8 @@ class CCPDDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.img_height = img_height
         self.img_width = img_width
+        self.max_train_images = max_train_images
+        self.max_val_images = max_val_images
 
         self.train_dataset = None
         self.val_dataset = None
@@ -460,6 +479,10 @@ class CCPDDataModule(pl.LightningDataModule):
 
     def setup(self, stage: str | None = None) -> None:
         """Setup datasets for each stage.
+
+        Supports two data layouts:
+        1. Flat: all images in data_dir
+        2. Split: data_dir/train/ and data_dir/val/ subfolders
 
         Args:
             stage: Either 'fit', 'validate', 'test', or 'predict'.
@@ -469,16 +492,25 @@ class CCPDDataModule(pl.LightningDataModule):
         if self.task == "ocr":
             kwargs = {"img_height": self.img_height, "img_width": self.img_width}
 
+        train_dir = self.data_dir / "train" if (self.data_dir / "train").exists() else self.data_dir
+        val_dir = self.data_dir / "val" if (self.data_dir / "val").exists() else self.data_dir
+
+        if train_dir != self.data_dir:
+            print(f"Using pre-split dataset: train={train_dir}, val={val_dir}")
+
         if stage == "fit" or stage is None:
             train_split = self.split_dir / "train.txt" if self.split_dir else None
             val_split = self.split_dir / "val.txt" if self.split_dir else None
 
-            self.train_dataset = dataset_class(self.data_dir, split_file=train_split, **kwargs)
-            self.val_dataset = dataset_class(self.data_dir, split_file=val_split, **kwargs)
+            self.train_dataset = dataset_class(
+                train_dir, split_file=train_split, max_images=self.max_train_images, **kwargs
+            )
+            self.val_dataset = dataset_class(val_dir, split_file=val_split, max_images=self.max_val_images, **kwargs)
 
         if stage == "test" or stage is None:
+            test_dir = self.data_dir / "test" if (self.data_dir / "test").exists() else val_dir
             test_split = self.split_dir / "test.txt" if self.split_dir else None
-            self.test_dataset = dataset_class(self.data_dir, split_file=test_split, **kwargs)
+            self.test_dataset = dataset_class(test_dir, split_file=test_split, max_images=self.max_val_images, **kwargs)
 
     def train_dataloader(self) -> DataLoader:
         """Get training dataloader."""

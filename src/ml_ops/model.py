@@ -125,11 +125,11 @@ class CRNN(nn.Module):
 
     def __init__(
         self,
-        img_height: int = 48,
-        img_width: int = 168,
+        img_height: int = 32,
+        img_width: int = 100,
         num_classes: int = NUM_CLASSES,
-        hidden_size: int = 256,
-        num_layers: int = 2,
+        hidden_size: int = 128,
+        num_layers: int = 1,
         dropout: float = 0.1,
     ) -> None:
         """Initialize CRNN.
@@ -146,14 +146,21 @@ class CRNN(nn.Module):
         self.num_classes = num_classes
 
         self.cnn = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1)),
             nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
@@ -161,20 +168,13 @@ class CRNN(nn.Module):
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1)),
-            nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=(2, 1), stride=(2, 1)),
-            nn.Conv2d(512, 512, kernel_size=2, stride=1, padding=0),
-            nn.BatchNorm2d(512),
+            nn.Conv2d(256, 256, kernel_size=2, stride=1, padding=0),
+            nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
         )
 
         self.rnn = nn.LSTM(
-            input_size=512,
+            input_size=256,
             hidden_size=hidden_size,
             num_layers=num_layers,
             bidirectional=True,
@@ -211,13 +211,13 @@ class PlateOCR(pl.LightningModule):
 
     def __init__(
         self,
-        img_height: int = 48,
-        img_width: int = 168,
-        hidden_size: int = 256,
-        num_layers: int = 2,
+        img_height: int = 32,
+        img_width: int = 100,
+        hidden_size: int = 128,
+        num_layers: int = 1,
         dropout: float = 0.1,
-        learning_rate: float = 1e-3,
-        max_epochs: int = 100,
+        learning_rate: float = 3e-3,
+        max_epochs: int = 15,
     ) -> None:
         """Initialize PlateOCR module.
 

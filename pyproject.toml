@@ -54,4 +54,7 @@ dev = [
 line-length = 120
 
 [tool.coverage.run]
-omit = ["tests/*"]
+source = ["src"]
+
+[tool.coverage.report]
+omit = ["tests/*", "**/__init__.py"]

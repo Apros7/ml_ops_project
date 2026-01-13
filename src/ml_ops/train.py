@@ -108,8 +108,8 @@ def _train_detector_with_cfg(
     """Train the detector using Hydra-provided defaults plus CLI overrides."""
 
     data_cfg = cfg.data
-    training_cfg = cfg.training_conf.detector
-    model_cfg = cfg.model_conf.detector
+    training_cfg = cfg.training.detector
+    model_cfg = cfg.model.detector
     wandb_cfg = cfg.wandb
 
     resolved_data_dir = _normalize_path(data_dir) or _normalize_path(data_cfg.get("data_dir")) or PROJECT_ROOT / "data"
@@ -245,8 +245,8 @@ def _train_ocr_with_cfg(
     """Train the OCR model using Hydra configs plus CLI overrides."""
 
     data_cfg = cfg.data
-    training_cfg = cfg.training_conf.ocr
-    model_cfg = cfg.model_conf.ocr
+    training_cfg = cfg.training.ocr
+    model_cfg = cfg.model.ocr
     wandb_cfg = cfg.wandb
 
     resolved_data_dir = _normalize_path(data_dir) or _normalize_path(data_cfg.get("data_dir")) or PROJECT_ROOT / "data"

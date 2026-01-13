@@ -1,13 +1,15 @@
 # configs/config.yaml
 defaults:
   - data: base
-  - model_conf
-  - training_conf
+  - model/detector: yolov8n
+  - model/ocr: crnn_default
+  - training/detector: default
+  - training/ocr: default
+  - wandb: default
   - _self_
 
 seed: 42
 
-wandb:
-  enabled: true
-  project: license-plate-ocr
-  entity: ml_ops_number_plates
+# Override from the CLI, for example:
+# uv run python -m ml_ops.train train-detector model/detector=yolov8s
+# uv run python -m ml_ops.train train-ocr training/ocr=quick

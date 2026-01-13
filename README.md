@@ -71,3 +71,44 @@ The directory structure of the project looks like this:
 Created using [mlops_template](https://github.com/SkafteNicki/mlops_template),
 a [cookiecutter template](https://github.com/cookiecutter/cookiecutter) for getting
 started with Machine Learning Operations (MLOps).
+
+## Configuration & Hydra usage
+
+Training scripts use Hydra configs stored in `configs/`:
+
+```
+configs/
+├── config.yaml
+├── data/                 # dataset presets (base, augmented, ...)
+├── model/
+│   ├── detector/         # YOLO variants (yolov8n, yolov8s, ...)
+│   └── ocr/              # CRNN variants (crnn_default, crnn_full, ...)
+├── training/
+│   ├── detector/         # detector schedules (default, fast, ...)
+│   └── ocr/              # OCR schedules (default, quick, ...)
+└── wandb/                # logging presets (default, disabled)
+```
+
+### Direct CLI overrides
+
+Every Typer command in `src/ml_ops/train.py` accepts Hydra overrides via `-o/--override`:
+
+```
+uv run python -m ml_ops.train train-detector data/ccpd_tiny \
+	-o model/detector=yolov8s -o training/detector=fast -o wandb=disabled
+
+uv run python -m ml_ops.train train-ocr data/ccpd_tiny \
+	-o model/ocr=crnn_full -o training/ocr=quick
+```
+
+### Using Invoke tasks with overrides
+
+Invoke tasks wrap the same commands. Use `--` to pass overrides through the task interface:
+
+```
+uv run invoke train-detector -- data/ccpd_tiny --override model/detector=yolov8s
+uv run invoke train-ocr -- data/ccpd_tiny --override wandb=disabled
+uv run invoke train-both -- data/ccpd_tiny --override training/ocr=quick
+```
+
+You can chain multiple `--override key=value` pairs to mix dataset, model, training, and logging presets without editing config files. To add new presets, simply add new config files in the appropriate subdirectories under `configs/`.

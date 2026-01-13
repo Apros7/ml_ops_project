@@ -14,8 +14,6 @@ from hydra import compose, initialize_config_dir
 from hydra.core.global_hydra import GlobalHydra
 from omegaconf import DictConfig
 from loguru import logger
-import os
-os.environ["WANDB_API_KEY"] = os.getenv("WANDB_API_KEY", "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")
 
 from ml_ops.model import PlateDetector, PlateOCR
 from ml_ops.data import CCPDDataModule, export_yolo_format, ENGLISH_NUM_CLASSES, NUM_CLASSES

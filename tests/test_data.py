@@ -9,6 +9,7 @@ from ml_ops.data import CCPDDetectionDataset, CCPDOCRDataset, ocr_collate_fn
 DATA_DIR = Path("data/ccpd_tiny")
 IMAGE_EXTS = ("*.jpg", "*.jpeg", "*.png")
 
+
 def count_images(path: Path) -> int:
     return sum(len(list(path.rglob(ext))) for ext in IMAGE_EXTS)
 

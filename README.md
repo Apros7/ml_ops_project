@@ -86,7 +86,7 @@ configs/
 ├── training/
 │   ├── detector/         # detector schedules (default, fast, ...)
 │   └── ocr/              # OCR schedules (default, quick, ...)
-└── wandb/                # logging presets (default, disabled)
+└── wandb_configs/                # logging presets (default, disabled)
 ```
 
 ### Direct CLI overrides
@@ -95,7 +95,7 @@ Every Typer command in `src/ml_ops/train.py` accepts Hydra overrides via `-o/--o
 
 ```
 uv run python -m ml_ops.train train-detector data/ccpd_tiny \
-	-o model/detector=yolov8s -o training/detector=fast -o wandb=disabled
+	-o model/detector=yolov8s -o training/detector=fast -o _wandb_configs_=disabled
 
 uv run python -m ml_ops.train train-ocr data/ccpd_tiny \
 	-o model/ocr=crnn_full -o training/ocr=quick
@@ -107,8 +107,9 @@ Invoke tasks wrap the same commands. Use `--` to pass overrides through the task
 
 ```
 uv run invoke train-detector -- data/ccpd_tiny --override model/detector=yolov8s
-uv run invoke train-ocr -- data/ccpd_tiny --override wandb=disabled
+uv run invoke train-ocr -- data/ccpd_tiny --override _wandb_configs_=disabled
 uv run invoke train-both -- data/ccpd_tiny --override training/ocr=quick
+uv run invoke train-detector -- data/ccpd_tiny --override model/detector=yolov8s --override training/detector=fast
 ```
 
 You can chain multiple `--override key=value` pairs to mix dataset, model, training, and logging presets without editing config files. To add new presets, simply add new config files in the appropriate subdirectories under `configs/`.

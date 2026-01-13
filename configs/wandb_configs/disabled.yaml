@@ -1,0 +1,3 @@
+enabled: false
+project: license-plate-ocr
+entity: ml_ops_number_plates

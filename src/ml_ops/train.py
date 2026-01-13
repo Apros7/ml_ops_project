@@ -110,7 +110,7 @@ def _train_detector_with_cfg(
     data_cfg = cfg.data
     training_cfg = cfg.training.detector
     model_cfg = cfg.model.detector
-    wandb_cfg = cfg.wandb
+    wandb_cfg = cfg.wandb_configs
 
     resolved_data_dir = _normalize_path(data_dir) or _normalize_path(data_cfg.get("data_dir")) or PROJECT_ROOT / "data"
     resolved_split_dir = _normalize_path(split_dir) or _normalize_path(data_cfg.get("split_dir"))
@@ -255,7 +255,7 @@ def _train_ocr_with_cfg(
     data_cfg = cfg.data
     training_cfg = cfg.training.ocr
     model_cfg = cfg.model.ocr
-    wandb_cfg = cfg.wandb
+    wandb_cfg = cfg.wandb_configs
 
     resolved_data_dir = _normalize_path(data_dir) or _normalize_path(data_cfg.get("data_dir")) or PROJECT_ROOT / "data"
     resolved_split_dir = _normalize_path(split_dir) or _normalize_path(data_cfg.get("split_dir"))

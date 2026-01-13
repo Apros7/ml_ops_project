@@ -5,8 +5,7 @@ defaults:
   - model/ocr: crnn_default
   - training/detector: default
   - training/ocr: default
-  # Enable wandb once configs/wandb/default.yaml (and optionally disabled.yaml) are available:
-  # - wandb: default
+  - wandb: default
   - _self_
 
 seed: 42

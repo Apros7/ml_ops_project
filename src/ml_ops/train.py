@@ -139,7 +139,11 @@ def _train_detector_with_cfg(
         max_val_value = max_total - max_train_value
 
     if max_train_value is None or max_val_value is None:
-        raise ValueError("Specify max_train_images and max_val_images via config or CLI overrides.")
+        raise ValueError(
+            "Cannot determine train/val split sizes. Set either (1) both "
+            "max_train_images and max_val_images, or (2) max_total_images "
+            "together with train_split, via config or CLI overrides."
+        )
 
     project_path.mkdir(parents=True, exist_ok=True)
     resolved_output_dir.mkdir(parents=True, exist_ok=True)

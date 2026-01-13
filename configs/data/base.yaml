@@ -1,5 +1,10 @@
 name: "base"
-path: "data/"
-batch_size: 32
+data_dir: "data/ccpd_tiny"
+split_dir: null
+processed_yolo_dir: "data/processed/yolo"
+train_split: 0.8
+max_total_images: 5000
+max_train_images: 4000
+max_val_images: 1000
+english_only: true
 num_workers: 4
-shuffle: true

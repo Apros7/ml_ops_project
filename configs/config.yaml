@@ -1,14 +1,13 @@
 # configs/config.yaml
 defaults:
   - data: base
-  - model: small
-  - train: default
-  - experiment: debug
+  - model_conf
+  - training_conf
   - _self_
 
 seed: 42
 
 wandb:
   enabled: true
-  project: ml_ops_number_plates
+  project: license-plate-ocr
   entity: ml_ops_number_plates

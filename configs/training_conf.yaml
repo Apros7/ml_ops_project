@@ -1,0 +1,17 @@
+training_conf:
+  detector:
+    epochs: 10
+    batch_size: 32
+    img_size: 320
+    project_dir: runs/detect
+    experiment_name: plate_detection
+
+  ocr:
+    batch_size: 64
+    max_epochs: 15
+    learning_rate: 0.001
+    project_dir: runs/ocr
+    experiment_name: plate_ocr
+    patience: 5
+    gradient_clip_val: 5.0
+    precision: auto

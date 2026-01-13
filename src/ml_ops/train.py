@@ -276,7 +276,11 @@ def _train_ocr_with_cfg(
 
     max_images_value = max_images or data_cfg.get("max_total_images")
     if max_images_value is None:
-        raise ValueError("Specify max_images via config or CLI overrides.")
+        raise ValueError(
+            "Missing value for max_images. Set it either via the CLI argument "
+            "'--max-images' or by specifying 'data.max_total_images' in the Hydra "
+            "configuration (for example in configs/)."
+        )
 
     train_split = float(data_cfg.get("train_split", 0.8))
     max_train_images = int(max_images_value * train_split)

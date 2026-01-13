@@ -4,7 +4,7 @@ import shutil
 import time
 from pathlib import Path
 from typing import Any
-
+from loguru import logger
 import cv2
 import torch
 import typer
@@ -586,7 +586,7 @@ class CCPDDataModule(pl.LightningDataModule):
         val_dir = self.data_dir / "val" if (self.data_dir / "val").exists() else self.data_dir
 
         if train_dir != self.data_dir:
-            print(f"Using pre-split dataset: train={train_dir}, val={val_dir}")
+            logger.info(f"Using pre-split dataset: train={train_dir}, val={val_dir}")
 
         if stage == "fit" or stage is None:
             train_split = self.split_dir / "train.txt" if self.split_dir else None
@@ -660,33 +660,34 @@ def export_yolo_format(
     labels_dir = output_dir / "labels"
 
     if images_dir.exists():
-        print(f"Clearing old data from {images_dir}...")
+        logger.info(f"Clearing old data from {images_dir}...")
         shutil.rmtree(images_dir)
     if labels_dir.exists():
+        logger.info(f"Clearing old data from {labels_dir}...")
         shutil.rmtree(labels_dir)
 
     images_dir.mkdir(parents=True, exist_ok=True)
     labels_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Scanning for images in {data_dir}...")
+    logger.info(f"Scanning for images in {data_dir}...")
     image_paths = []
     if split_file and split_file.exists():
-        print(f"Using split file: {split_file}")
+        logger.info(f"Using split file: {split_file}")
         with open(split_file) as f:
             for line in f:
                 img_path = data_dir / line.strip()
                 if img_path.exists():
                     image_paths.append(img_path)
     else:
-        print("No split file provided, scanning all images...")
+        logger.warning("No split file provided, scanning all images...")
         for ext in ["*.jpg", "*.jpeg", "*.png"]:
             image_paths.extend(data_dir.rglob(ext))
 
     if len(image_paths) > max_images:
-        print(f"Limiting to {max_images} images (found {len(image_paths)})")
+        logger.warning(f"Limiting to {max_images} images (found {len(image_paths)})")
         image_paths = image_paths[:max_images]
 
-    print(f"Processing {len(image_paths)} images")
+    logger.info(f"Processing {len(image_paths)} images")
 
     exported = 0
     skipped_parse = 0
@@ -720,14 +721,14 @@ def export_yolo_format(
         exported += 1
 
     elapsed = time.time() - start_time
-    print(f"\n{'='*50}")
-    print("Export complete!")
-    print(f"  Exported: {exported} images")
-    print(f"  Skipped (parse error): {skipped_parse}")
-    print(f"  Skipped (read error): {skipped_read}")
-    print(f"  Output directory: {output_dir}")
-    print(f"  Time elapsed: {elapsed:.1f}s ({exported/elapsed:.1f} img/s)")
-    print(f"{'='*50}")
+    logger.info(f"\n{'='*50}")
+    logger.info("Export complete!")
+    logger.info(f"  Exported: {exported} images")
+    logger.info(f"  Skipped (parse error): {skipped_parse}")
+    logger.info(f"  Skipped (read error): {skipped_read}")
+    logger.info(f"  Output directory: {output_dir}")
+    logger.info(f"  Time elapsed: {elapsed:.1f}s ({exported/elapsed:.1f} img/s)")
+    logger.info(f"{'='*50}")
 
 
 def preprocess(data_path: Path, output_folder: Path) -> None:
@@ -737,7 +738,7 @@ def preprocess(data_path: Path, output_folder: Path) -> None:
         data_path: Path to raw CCPD data.
         output_folder: Output directory.
     """
-    print("Preprocessing data...")
+    logger.info("Preprocessing data...")
     export_yolo_format(data_path, output_folder)
 
 

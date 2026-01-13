@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import typer
 from tqdm import tqdm
+from loguru import logger
 
 from ml_ops.data import parse_ccpd_filename, PROVINCES
 
@@ -106,20 +107,20 @@ def evaluate(
         output_dir = RUNS_DIR / "easyocr"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("Initializing EasyOCR (this may take a moment to download models)...")
+    logger.info("Initializing EasyOCR (this may take a moment to download models)...")
     reader = easyocr.Reader(["ch_sim", "en"], gpu=False)
 
-    print(f"Loading images from {data_dir}...")
+    logger.info(f"Loading images from {data_dir}...")
     image_paths = []
     for ext in ["*.jpg", "*.jpeg", "*.png"]:
         image_paths.extend(data_dir.rglob(ext))
     image_paths = sorted(image_paths)[:max_images]
 
-    print(f"Evaluating {len(image_paths)} images...")
+    logger.info(f"Evaluating {len(image_paths)} images...")
     if use_full_image:
-        print("Mode: FULL IMAGE - EasyOCR will process the entire image")
+        logger.info("Mode: FULL IMAGE - EasyOCR will process the entire image")
     else:
-        print("Mode: HIGH-RES CROP - EasyOCR will process the license plate at original resolution")
+        logger.info("Mode: HIGH-RES CROP - EasyOCR will process the license plate at original resolution")
 
     results = []
     for img_path in tqdm(image_paths, desc="Processing"):
@@ -208,17 +209,17 @@ def evaluate(
     else:
         avg_crop_h, avg_crop_w = 0, 0
 
-    print("\n" + "=" * 60)
-    print("EASYOCR EVALUATION RESULTS")
-    print("=" * 60)
-    print(f"Total images evaluated: {len(results)}")
-    print(f"Average crop size:      {avg_crop_h:.0f} x {avg_crop_w:.0f} pixels")
-    print(f"Exact matches:          {exact_correct}/{len(results)} ({exact_correct/len(results)*100:.1f}%)")
-    print(f"Partial matches:        {partial_correct}/{len(results)} ({partial_correct/len(results)*100:.1f}%)")
-    print(f"Average char accuracy:  {avg_char_acc*100:.1f}%")
-    print("=" * 60)
+    logger.info("\n" + "=" * 60)
+    logger.info("EASYOCR EVALUATION RESULTS")
+    logger.info("=" * 60)
+    logger.info(f"Total images evaluated: {len(results)}")
+    logger.info(f"Average crop size:      {avg_crop_h:.0f} x {avg_crop_w:.0f} pixels")
+    logger.info(f"Exact matches:          {exact_correct}/{len(results)} ({exact_correct/len(results)*100:.1f}%)")
+    logger.info(f"Partial matches:        {partial_correct}/{len(results)} ({partial_correct/len(results)*100:.1f}%)")
+    logger.info(f"Average char accuracy:  {avg_char_acc*100:.1f}%")
+    logger.info("=" * 60)
 
-    print("\nSaving visualizations...")
+    logger.info("\nSaving visualizations...")
     num_pages = (len(results) + 7) // 8
 
     for page in range(min(num_pages, 5)):
@@ -248,7 +249,7 @@ def evaluate(
         save_path = output_dir / f"easyocr_results_page_{page + 1:02d}.png"
         plt.savefig(save_path, dpi=100, bbox_inches="tight")
         plt.close(fig)
-        print(f"  Saved: {save_path}")
+        logger.info(f"  Saved: {save_path}")
 
     summary_path = output_dir / "summary.txt"
     with open(summary_path, "w") as f:
@@ -266,17 +267,17 @@ def evaluate(
             status = "✓" if r["exact_match"] else ("~" if r["partial_match"] else "✗")
             f.write(f"{status} GT: {r['gt_text']:10} | Pred: {r['pred_text'][:15]:15} | {r['image_path']}\n")
 
-    print(f"\nSummary saved to: {summary_path}")
-    print(f"All results saved to: {output_dir}")
+    logger.info(f"\nSummary saved to: {summary_path}")
+    logger.info(f"All results saved to: {output_dir}")
 
-    print("\n" + "=" * 60)
-    print(f"FINAL SCORE: {exact_correct} / {len(results)} license plates correctly recognized")
-    print("=" * 60)
+    logger.info("\n" + "=" * 60)
+    logger.info(f"FINAL SCORE: {exact_correct} / {len(results)} license plates correctly recognized")
+    logger.info("=" * 60)
 
-    print("\nSample image paths (for reference):")
+    logger.info("\nSample image paths (for reference):")
     for r in results[:5]:
         status = "✓" if r["exact_match"] else "✗"
-        print(f"  {status} {r['image_path']}")
+        logger.info(f"  {status} {r['image_path']}")
 
 
 def run_ocr_strategy(
@@ -345,11 +346,11 @@ def analyze(
         uv run python -m ml_ops.eval_easyocr analyze path/to/image.jpg
     """
     if not image_path.exists():
-        print(f"Error: Image not found at {image_path}")
+        logger.error(f"Error: Image not found at {image_path}")
         raise typer.Exit(1)
 
-    print(f"Analyzing: {image_path}")
-    print("Initializing EasyOCR...")
+    logger.info(f"Analyzing: {image_path}")
+    logger.info("Initializing EasyOCR...")
     reader = easyocr.Reader(["ch_sim", "en"], gpu=False)
 
     try:
@@ -357,13 +358,14 @@ def analyze(
         gt_text = annotation["plate_text"]
         bbox = annotation["bbox"]
     except (ValueError, IndexError) as e:
-        print(f"Error: Could not parse CCPD filename: {e}")
-        print("This tool requires images with CCPD-style filenames containing annotations.")
+        logger.error(
+            f"Error: Could not parse CCPD filename: {e}. This tool requires images with CCPD-style filenames containing annotations."
+        )
         raise typer.Exit(1)
 
     image = cv2.imread(str(image_path))
     if image is None:
-        print(f"Error: Could not read image at {image_path}")
+        logger.error(f"Error: Could not read image at {image_path}")
         raise typer.Exit(1)
 
     h, w = image.shape[:2]
@@ -384,82 +386,82 @@ def analyze(
     crop_upscaled = cv2.resize(plate_crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
     crop_upscaled_enhanced = preprocess_plate_image(crop_upscaled)
 
-    print(f"\nImage size: {w} x {h}")
-    print(f"Plate crop: {plate_crop.shape[1]} x {plate_crop.shape[0]}")
-    print(f"Upscaled crop: {crop_upscaled.shape[1]} x {crop_upscaled.shape[0]}")
-    print(f"\nGround Truth: {gt_text}")
-    print("\n" + "=" * 70)
-    print("TRYING MULTIPLE STRATEGIES...")
-    print("=" * 70)
+    logger.info(f"\nImage size: {w} x {h}")
+    logger.info(f"Plate crop: {plate_crop.shape[1]} x {plate_crop.shape[0]}")
+    logger.info(f"Upscaled crop: {crop_upscaled.shape[1]} x {crop_upscaled.shape[0]}")
+    logger.info(f"\nGround Truth: {gt_text}")
+    logger.info("\n" + "=" * 70)
+    logger.info("TRYING MULTIPLE STRATEGIES...")
+    logger.info("=" * 70)
 
     # Try multiple strategies
     strategies = []
 
     # Strategy 1: Full image, no allowlist (like web demo)
-    print("\n[1] Full image, no restrictions...")
+    logger.info("\n[1] Full image, no restrictions...")
     pred, raw, texts, _ = run_ocr_strategy(reader, image, "Full image", use_allowlist=False)
     char_acc = sum(1 for a, b in zip(pred, gt_text) if a == b) / len(gt_text) if gt_text else 0
     strategies.append(("Full image (no filter)", pred, raw, texts, char_acc, image_rgb))
-    print(f"    Raw: {raw} → Corrected: {pred} | Char accuracy: {char_acc*100:.1f}%")
+    logger.info(f"Raw: {raw} → Corrected: {pred} | Char accuracy: {char_acc*100:.1f}%")
 
     # Strategy 2: Full image with allowlist
-    print("\n[2] Full image, with plate allowlist...")
+    logger.info("\n[2] Full image, with plate allowlist...")
     pred, raw, texts, _ = run_ocr_strategy(reader, image, "Full image + allowlist", use_allowlist=True)
     char_acc = sum(1 for a, b in zip(pred, gt_text) if a == b) / len(gt_text) if gt_text else 0
     strategies.append(("Full image (allowlist)", pred, raw, texts, char_acc, image_rgb))
-    print(f"    Raw: {raw} → Corrected: {pred} | Char accuracy: {char_acc*100:.1f}%")
+    logger.info(f"Raw: {raw} → Corrected: {pred} | Char accuracy: {char_acc*100:.1f}%")
 
     # Strategy 3: Crop, no preprocessing
-    print("\n[3] Original crop, no preprocessing...")
+    logger.info("\n[3] Original crop, no preprocessing...")
     pred, raw, texts, _ = run_ocr_strategy(reader, plate_crop, "Crop raw", use_allowlist=False)
     char_acc = sum(1 for a, b in zip(pred, gt_text) if a == b) / len(gt_text) if gt_text else 0
     strategies.append(("Crop (raw)", pred, raw, texts, char_acc, crop_rgb))
-    print(f"    Raw: {raw} → Corrected: {pred} | Char accuracy: {char_acc*100:.1f}%")
+    logger.info(f"Raw: {raw} → Corrected: {pred} | Char accuracy: {char_acc*100:.1f}%")
 
     # Strategy 4: Crop with CLAHE
-    print("\n[4] Crop with CLAHE enhancement...")
+    logger.info("\n[4] Crop with CLAHE enhancement...")
     pred, raw, texts, _ = run_ocr_strategy(reader, crop_enhanced, "Crop CLAHE", use_allowlist=False)
     char_acc = sum(1 for a, b in zip(pred, gt_text) if a == b) / len(gt_text) if gt_text else 0
     strategies.append(("Crop (CLAHE)", pred, raw, texts, char_acc, cv2.cvtColor(crop_enhanced, cv2.COLOR_BGR2RGB)))
-    print(f"    Raw: {raw} → Corrected: {pred} | Char accuracy: {char_acc*100:.1f}%")
+    logger.info(f"Raw: {raw} → Corrected: {pred} | Char accuracy: {char_acc*100:.1f}%")
 
     # Strategy 5: Upscaled crop
-    print("\n[5] Upscaled crop (3x)...")
+    logger.info("\n[5] Upscaled crop (3x)...")
     pred, raw, texts, _ = run_ocr_strategy(reader, crop_upscaled, "Crop 3x", use_allowlist=False)
     char_acc = sum(1 for a, b in zip(pred, gt_text) if a == b) / len(gt_text) if gt_text else 0
     strategies.append(
         ("Crop (3x upscaled)", pred, raw, texts, char_acc, cv2.cvtColor(crop_upscaled, cv2.COLOR_BGR2RGB))
     )
-    print(f"    Raw: {raw} → Corrected: {pred} | Char accuracy: {char_acc*100:.1f}%")
+    logger.info(f"Raw: {raw} → Corrected: {pred} | Char accuracy: {char_acc*100:.1f}%")
 
     # Strategy 6: Upscaled + CLAHE
-    print("\n[6] Upscaled crop (3x) + CLAHE...")
+    logger.info("\n[6] Upscaled crop (3x) + CLAHE...")
     pred, raw, texts, _ = run_ocr_strategy(reader, crop_upscaled_enhanced, "Crop 3x CLAHE", use_allowlist=False)
     char_acc = sum(1 for a, b in zip(pred, gt_text) if a == b) / len(gt_text) if gt_text else 0
     strategies.append(
         ("Crop (3x + CLAHE)", pred, raw, texts, char_acc, cv2.cvtColor(crop_upscaled_enhanced, cv2.COLOR_BGR2RGB))
     )
-    print(f"    Raw: {raw} → Corrected: {pred} | Char accuracy: {char_acc*100:.1f}%")
+    logger.info(f"Raw: {raw} → Corrected: {pred} | Char accuracy: {char_acc*100:.1f}%")
 
     # Strategy 7: Beamsearch on full image
-    print("\n[7] Full image with beam search decoder...")
+    logger.info("\n[7] Full image with beam search decoder...")
     pred, raw, texts, _ = run_ocr_strategy(reader, image, "Full + beam", use_allowlist=False, decoder="beamsearch")
     char_acc = sum(1 for a, b in zip(pred, gt_text) if a == b) / len(gt_text) if gt_text else 0
     strategies.append(("Full (beamsearch)", pred, raw, texts, char_acc, image_rgb))
-    print(f"    Raw: {raw} → Corrected: {pred} | Char accuracy: {char_acc*100:.1f}%")
+    logger.info(f"Raw: {raw} → Corrected: {pred} | Char accuracy: {char_acc*100:.1f}%")
 
     # Find best strategy (char_acc is now at index 4)
     best_idx = max(range(len(strategies)), key=lambda i: strategies[i][4])
     best_strategy = strategies[best_idx]
 
-    print("\n" + "=" * 70)
-    print(f"BEST RESULT: {best_strategy[0]}")
-    print(f"Raw OCR:     {best_strategy[2]}")
-    print(f"Corrected:   {best_strategy[1]}")
-    print(f"Ground Truth: {gt_text}")
-    print(f"Exact Match: {'✓ YES' if best_strategy[1] == gt_text else '✗ NO'}")
-    print(f"Char Accuracy: {best_strategy[4]*100:.1f}%")
-    print("=" * 70)
+    logger.info("\n" + "=" * 70)
+    logger.info(f"BEST RESULT: {best_strategy[0]}")
+    logger.info(f"Raw OCR:     {best_strategy[2]}")
+    logger.info(f"Corrected:   {best_strategy[1]}")
+    logger.info(f"Ground Truth: {gt_text}")
+    logger.info(f"Exact Match: {'✓ YES' if best_strategy[1] == gt_text else '✗ NO'}")
+    logger.info(f"Char Accuracy: {best_strategy[4]*100:.1f}%")
+    logger.info("=" * 70)
 
     # Create visualization with all strategies
     fig = plt.figure(figsize=(20, 12))
@@ -520,7 +522,7 @@ def analyze(
         output_dir.mkdir(parents=True, exist_ok=True)
         save_path = output_dir / f"analysis_{image_path.stem}.png"
         plt.savefig(save_path, dpi=150, bbox_inches="tight")
-        print(f"\nVisualization saved to: {save_path}")
+        logger.info(f"\nVisualization saved to: {save_path}")
 
     plt.show()
 

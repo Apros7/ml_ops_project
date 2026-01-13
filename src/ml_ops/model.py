@@ -10,6 +10,7 @@ import pytorch_lightning as pl
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import OneCycleLR
 from ultralytics import YOLO
+from loguru import logger
 
 from ml_ops.data import (
     NUM_CLASSES,
@@ -304,8 +305,8 @@ class PlateOCR(pl.LightningModule):
         self.val_samples: list[dict] = []
 
         if english_only:
-            print("📝 English-only mode: Predicting 6 characters (positions 2-7)")
-            print(f"   Character set: A-Z (no I,O) + 0-9 = {ENGLISH_NUM_CLASSES} classes")
+            logger.info("English-only mode: Predicting 6 characters (positions 2-7)")
+            logger.info(f"   Character set: A-Z (no I,O) + 0-9 = {ENGLISH_NUM_CLASSES} classes")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass.
@@ -488,7 +489,7 @@ class PlateOCR(pl.LightningModule):
         plt.savefig(save_path, dpi=100, bbox_inches="tight")
         plt.close(fig)
 
-        print(f"\n📊 Saved prediction visualization to: {save_path}")
+        logger.info(f"\nSaved prediction visualization to: {save_path}")
 
         self.val_samples = []
 
@@ -667,10 +668,10 @@ class LicensePlateRecognizer:
 
 
 if __name__ == "__main__":
-    print("Testing CRNN model...")
+    logger.debug("Testing CRNN model...")
     model = CRNN()
     x = torch.randn(2, 3, 48, 168)
     output = model(x)
-    print(f"Input shape: {x.shape}")
-    print(f"Output shape: {output.shape}")
-    print(f"Expected: (seq_len, batch=2, num_classes+1={NUM_CLASSES + 1})")
+    logger.debug(f"Input shape: {x.shape}")
+    logger.debug(f"Output shape: {output.shape}")
+    logger.debug(f"Expected: (seq_len, batch=2, num_classes+1={NUM_CLASSES + 1})")

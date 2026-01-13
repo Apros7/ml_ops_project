@@ -66,7 +66,11 @@ def torch_profiler(
     logger.info("\n" + "=" * 60)
     logger.info("PyTorch Profiler Summary")
     logger.info("=" * 60)
-    logger.info(prof.key_averages().table(sort_by="self_cuda_time_total" if torch.cuda.is_available() else "self_cpu_time_total"))
+    logger.info(
+        prof.key_averages().table(
+            sort_by="self_cuda_time_total" if torch.cuda.is_available() else "self_cpu_time_total"
+        )
+    )
 
 
 @contextmanager
@@ -128,6 +132,7 @@ def profile_function(func: Any) -> Any:
     Returns:
         Wrapped function with profiling.
     """
+
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         if not PROFILING_ENABLED:
             return func(*args, **kwargs)

@@ -417,7 +417,7 @@ class PlateOCR(pl.LightningModule):
         plate_texts = batch["plate_texts"]
 
         # Profile validation step if enabled (only first batch of epoch)
-        profile_this_step = (self.enable_profiling and batch_idx == 0)
+        profile_this_step = self.enable_profiling and batch_idx == 0
         output_dir = self.output_dir.parent / "profiling" if self.output_dir else None
 
         with torch_profiler(

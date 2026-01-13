@@ -40,7 +40,9 @@ PROJECT_NAME = "ml_ops"
 PYTHON_VERSION = "3.12"
 
 # Default data directory
-DEFAULT_DATA_DIR = "data/ccpd_base"
+DEFAULT_DATA_DIR = "data/base"
+# DEFAULT_DATA_DIR = "data/ccpd_tiny"
+
 
 
 # ============================================================================

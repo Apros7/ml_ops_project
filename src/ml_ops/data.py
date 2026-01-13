@@ -11,6 +11,7 @@ import typer
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 import pytorch_lightning as pl
+from ml_ops.profile import cprofile_context
 
 
 PROVINCES = [
@@ -644,6 +645,7 @@ def export_yolo_format(
     output_dir: Path,
     split_file: Path | None = None,
     max_images: int = 50000,
+    enable_profiling: bool = False,
 ) -> None:
     """Export CCPD dataset to YOLO format for training with Ultralytics.
 
@@ -652,9 +654,29 @@ def export_yolo_format(
         output_dir: Output directory for YOLO format dataset.
         split_file: Optional split file.
         max_images: Maximum number of images to export (default: 50000).
+        enable_profiling: Whether to enable profiling for this function.
     """
     start_time = time.time()
 
+    output_dir = Path(output_dir)
+    profile_output_dir = output_dir.parent / "profiling" if enable_profiling else None
+
+    with cprofile_context(
+        enabled=enable_profiling,
+        output_dir=profile_output_dir,
+        profile_name="export_yolo_format",
+    ):
+        _export_yolo_format_internal(data_dir, output_dir, split_file, max_images, start_time)
+
+
+def _export_yolo_format_internal(
+    data_dir: Path,
+    output_dir: Path,
+    split_file: Path | None,
+    max_images: int,
+    start_time: float,
+) -> None:
+    """Internal function for YOLO format export (called within profiler context)."""
     output_dir = Path(output_dir)
     images_dir = output_dir / "images"
     labels_dir = output_dir / "labels"

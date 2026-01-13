@@ -232,6 +232,11 @@ def docker_build(ctx: Context, progress: str = "plain") -> None:
         echo=True,
         pty=not WINDOWS,
     )
+    ctx.run(
+        f"docker build -t eval:latest . -f dockerfiles/eval.dockerfile --progress={progress}",
+        echo=True,
+        pty=not WINDOWS,
+    )
 
 
 # ============================================================================

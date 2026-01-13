@@ -5,7 +5,7 @@ defaults:
   - model/ocr: crnn_default
   - training/detector: default
   - training/ocr: default
-  - wandb: default
+  - wandb_configs: default
   - _self_
 
 seed: 42

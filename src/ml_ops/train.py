@@ -196,8 +196,13 @@ def _train_detector_with_cfg(
     train_split_file = resolved_split_dir / "train.txt" if resolved_split_dir else None
     val_split_file = resolved_split_dir / "val.txt" if resolved_split_dir else None
 
-    export_yolo_format(train_data_dir, train_output, train_split_file, max_images=max_train_value)
-    export_yolo_format(val_data_dir, val_output, val_split_file, max_images=max_val_value)
+    enable_profiling = training_cfg.get("enable_profiling", False)
+    export_yolo_format(
+        train_data_dir, train_output, train_split_file, max_images=max_train_value, enable_profiling=enable_profiling
+    )
+    export_yolo_format(
+        val_data_dir, val_output, val_split_file, max_images=max_val_value, enable_profiling=enable_profiling
+    )
 
     logger.info("Step 2: Creating data.yaml config...")
     data_yaml_path = resolved_output_dir / "data.yaml"
@@ -346,6 +351,8 @@ def _train_ocr_with_cfg(
     )
 
     logger.info("Creating CRNN model...")
+    enable_profiling = training_cfg.get("enable_profiling", False)
+    profile_every_n_steps = training_cfg.get("profile_every_n_steps", 100)
     model = PlateOCR(
         img_height=img_height_value,
         img_width=img_width_value,
@@ -356,6 +363,8 @@ def _train_ocr_with_cfg(
         max_epochs=max_epochs_value,
         output_dir=str(output_dir),
         english_only=english_only_value,
+        enable_profiling=enable_profiling,
+        profile_every_n_steps=profile_every_n_steps,
     )
 
     checkpoint_dir = project_path / experiment_name / "checkpoints"

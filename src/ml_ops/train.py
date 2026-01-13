@@ -9,6 +9,9 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from pytorch_lightning.loggers import CSVLogger, WandbLogger
 import wandb
+from hydra import compose, initialize_config_dir
+from hydra.core.global_hydra import GlobalHydra
+from omegaconf import DictConfig
 from loguru import logger
 
 from ml_ops.model import PlateDetector, PlateOCR
@@ -58,7 +61,7 @@ def _start_wandb_run(wandb_cfg: DictConfig, name: str, metadata: dict[str, Any])
     entity = wandb_cfg.get("entity", WANDB_ENTITY)
     project = wandb_cfg.get("project", WANDB_PROJECT)
     wandb.init(entity=entity, project=project, name=name, config=metadata)
-    print(f"📊 Logging to Weights & Biases: {entity}/{project}")
+    logger.info(f"Logging to Weights & Biases: {entity}/{project}")
     return True
 
 
@@ -146,7 +149,7 @@ def _train_detector_with_cfg(
     project_path.mkdir(parents=True, exist_ok=True)
     resolved_output_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info(f"Results will be saved to: {project_path / name}")
+    logger.info(f"Results will be saved to: {project_path / experiment_name}")
     logger.info("Step 1: Converting CCPD to YOLO format...")
 
     train_output = resolved_output_dir / "train"
@@ -155,10 +158,10 @@ def _train_detector_with_cfg(
     train_data_dir = resolved_data_dir / "train" if (resolved_data_dir / "train").exists() else resolved_data_dir
     val_data_dir = resolved_data_dir / "val" if (resolved_data_dir / "val").exists() else resolved_data_dir
 
-    if train_data_dir != data_dir:
-        logger.warning(f"Detected pre-split dataset: {data_dir}")
-        logger.warning(f"  Train folder: {train_data_dir}")
-        logger.warning(f"  Val folder: {val_data_dir}")
+    if train_data_dir != resolved_data_dir:
+        logger.info(f"Detected pre-split dataset: {resolved_data_dir}")
+        logger.info(f"  Train folder: {train_data_dir}")
+        logger.info(f"  Val folder: {val_data_dir}")
 
     train_split_file = resolved_split_dir / "train.txt" if resolved_split_dir else None
     val_split_file = resolved_split_dir / "val.txt" if resolved_split_dir else None
@@ -167,7 +170,7 @@ def _train_detector_with_cfg(
     export_yolo_format(val_data_dir, val_output, val_split_file, max_images=max_val_value)
 
     logger.info("Step 2: Creating data.yaml config...")
-    data_yaml_path = output_dir / "data.yaml"
+    data_yaml_path = resolved_output_dir / "data.yaml"
     data_yaml_content = f"""
 path: {resolved_output_dir.absolute()}
 train: train/images
@@ -196,7 +199,6 @@ names:
             "dataset": data_cfg.get("name", "CCPD"),
         },
     )
-    logger.info(f"Logging to Weights & Biases: {WANDB_ENTITY}/{WANDB_PROJECT}")
 
     detector = PlateDetector(
         model_name=model_name_value,
@@ -217,59 +219,85 @@ names:
         name=experiment_name,
     )
 
-    # Finish wandb run
-    wandb.finish()
+    _finish_wandb_run(wandb_active)
 
-    logger.info(f"\nTraining complete! Results saved to {project_path / name}")
-    logger.info(f"  - Training curves: {project_path / name / 'results.png'}")
-    logger.info(f"  - Metrics CSV: {project_path / name / 'results.csv'}")
-    logger.info(f"  - Best weights: {project_path / name / 'weights' / 'best.pt'}")
-    logger.info(f"  - W&B Dashboard: https://wandb.ai/{WANDB_ENTITY}/{WANDB_PROJECT}")
+    logger.info(f"\nTraining complete! Results saved to {project_path / experiment_name}")
+    logger.info(f"  - Training curves: {project_path / experiment_name / 'results.png'}")
+    logger.info(f"  - Metrics CSV: {project_path / experiment_name / 'results.csv'}")
+    logger.info(f"  - Best weights: {project_path / experiment_name / 'weights' / 'best.pt'}")
+    if wandb_active:
+        entity = wandb_cfg.get("entity", WANDB_ENTITY)
+        project = wandb_cfg.get("project", WANDB_PROJECT)
+        logger.info(f"  - W&B Dashboard: https://wandb.ai/{entity}/{project}")
+
+    return project_path, experiment_name
 
 
-@app.command()
-def train_ocr(
-    data_dir: Path = typer.Argument(..., help="Path to CCPD dataset directory"),
-    split_dir: Path = typer.Option(None, help="Directory containing train/val/test split files"),
-    batch_size: int = typer.Option(64, help="Batch size"),
-    max_epochs: int = typer.Option(15, help="Maximum number of epochs"),
-    learning_rate: float = typer.Option(1e-3, help="Learning rate"),
-    hidden_size: int = typer.Option(256, help="LSTM hidden size"),
-    num_layers: int = typer.Option(2, help="Number of LSTM layers"),
-    img_height: int = typer.Option(32, help="Input image height (32 required for model architecture)"),
-    img_width: int = typer.Option(200, help="Input image width (larger = better quality, more compute)"),
-    max_images: int = typer.Option(5000, help="Maximum total images (80%% train, 20%% val)"),
-    num_workers: int = typer.Option(4, help="Number of dataloader workers"),
-    project: str = typer.Option(None, help="Project directory for saving results"),
-    name: str = typer.Option("plate_ocr", help="Experiment name"),
-    english_only: bool = typer.Option(True, help="Only predict English chars (no Chinese province)"),
-) -> None:
-    """Train the license plate OCR model using PyTorch Lightning.
+def _train_ocr_with_cfg(
+    cfg: DictConfig,
+    *,
+    data_dir: Path | None = None,
+    split_dir: Path | None = None,
+    batch_size: int | None = None,
+    max_epochs: int | None = None,
+    learning_rate: float | None = None,
+    hidden_size: int | None = None,
+    num_layers: int | None = None,
+    img_height: int | None = None,
+    img_width: int | None = None,
+    max_images: int | None = None,
+    num_workers: int | None = None,
+    project: Path | None = None,
+    name: str | None = None,
+    english_only: bool | None = None,
+) -> tuple[Path, str]:
+    """Train the OCR model using Hydra configs plus CLI overrides."""
 
-    By default, uses English-only mode which:
-    - Predicts only 6 characters (positions 2-7, skips Chinese province)
-    - Uses a smaller character set (34 vs 69 classes)
-    - Is much easier to learn and more practical for most use cases
+    data_cfg = cfg.data
+    training_cfg = cfg.training.ocr
+    model_cfg = cfg.model.ocr
+    wandb_cfg = cfg.wandb_configs
 
-    Example:
-        uv run python -m ml_ops.train train-ocr data/ccpd_base --max-images 100
-        uv run python -m ml_ops.train train-ocr data/ccpd_base --no-english-only  # Full mode
-    """
-    max_train_images = int(max_images * 0.8)
-    max_val_images = max_images - max_train_images
-    logger.info(f"Max images: {max_images} -> {max_train_images} train, {max_val_images} val")
-    project_path = Path(project) if project else RUNS_DIR / "ocr"
+    resolved_data_dir = _normalize_path(data_dir) or _normalize_path(data_cfg.get("data_dir")) or PROJECT_ROOT / "data"
+    resolved_split_dir = _normalize_path(split_dir) or _normalize_path(data_cfg.get("split_dir"))
+    project_path = _normalize_path(project) or _normalize_path(training_cfg.get("project_dir")) or RUNS_DIR / "ocr"
+    experiment_name = name or training_cfg.get("experiment_name", "plate_ocr")
+
+    batch_size_value = batch_size or training_cfg.get("batch_size", 64)
+    max_epochs_value = max_epochs or training_cfg.get("max_epochs", 15)
+    learning_rate_value = learning_rate or training_cfg.get("learning_rate", 1e-3)
+    num_workers_value = num_workers or data_cfg.get("num_workers", 4)
+
+    english_only_value = english_only if english_only is not None else model_cfg.get("english_only", True)
+    img_height_value = img_height or model_cfg.get("img_height", 32)
+    img_width_value = img_width or model_cfg.get("img_width", 200)
+    hidden_size_value = hidden_size or model_cfg.get("hidden_size", 256)
+    num_layers_value = num_layers or model_cfg.get("num_layers", 2)
+    dropout_value = model_cfg.get("dropout", 0.3)
+
+    max_images_value = max_images or data_cfg.get("max_total_images")
+    if max_images_value is None:
+        raise ValueError(
+            "Missing value for max_images. Set it either via the CLI argument "
+            "'--max-images' or by specifying 'data.max_total_images' in the Hydra "
+            "configuration (for example in configs/)."
+        )
+
+    train_split = float(data_cfg.get("train_split", 0.8))
+    max_train_images = int(max_images_value * train_split)
+    max_val_images = max_images_value - max_train_images
+
+    logger.info(f"Max images: {max_images_value} -> {max_train_images} train, {max_val_images} val")
+    logger.info(f"OCR Mode: {'English-only (6 chars)' if english_only_value else 'Full (7 chars with Chinese)'}")
+
     project_path.mkdir(parents=True, exist_ok=True)
-
-    mode_str = "English-only (6 chars)" if english_only else "Full (7 chars with Chinese)"
-    logger.info(f"OCR Mode: {mode_str}")
-
-    output_dir = project_path / name / "predictions"
+    output_dir = project_path / experiment_name / "predictions"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info(f"Results will be saved to: {project_path / name}")
+    logger.info(f"Results will be saved to: {project_path / experiment_name}")
     logger.info(f"Prediction visualizations will be saved to: {output_dir}")
     logger.info("Setting up data module...")
+
     data_module = CCPDDataModule(
         data_dir=resolved_data_dir,
         split_dir=resolved_split_dir,
@@ -343,43 +371,22 @@ def train_ocr(
             },
         )
         loggers.append(wandb_logger)
-        print(
-            f"📊 Logging to Weights & Biases: {wandb_cfg.get('entity', WANDB_ENTITY)}/"
+        logger.info(
+            f"Logging to Weights & Biases: {wandb_cfg.get('entity', WANDB_ENTITY)}/"
             f"{wandb_cfg.get('project', WANDB_PROJECT)}"
         )
 
-    # Weights & Biases logger
-    wandb_logger = WandbLogger(
-        entity=WANDB_ENTITY,
-        project=WANDB_PROJECT,
-        name=f"ocr-{name}",
-        save_dir=str(project_path),
-        config={
-            "architecture": "CRNN",
-            "task": "OCR",
-            "english_only": english_only,
-            "num_classes": ENGLISH_NUM_CLASSES if english_only else NUM_CLASSES,
-            "img_height": img_height,
-            "img_width": img_width,
-            "hidden_size": hidden_size,
-            "num_layers": num_layers,
-            "learning_rate": learning_rate,
-            "batch_size": batch_size,
-            "max_epochs": max_epochs,
-            "max_train_images": max_train_images,
-            "max_val_images": max_val_images,
-            "dataset": "CCPD2019",
-        },
-    )
-    logger.info(f"Logging to Weights & Biases: {WANDB_ENTITY}/{WANDB_PROJECT}")
-
-    # CTC loss is not supported on MPS (Apple Silicon), so force CPU on Mac
     force_cpu = torch.backends.mps.is_available()
     accelerator, devices = get_accelerator(force_cpu=force_cpu)
 
     if force_cpu:
-        logger.warning("Using CPU for OCR training (CTC loss not supported on MPS)")
-    logger.info(f"Training on {accelerator}...")
+        logger.warning("Note: Using CPU for OCR training (CTC loss not supported on MPS)")
+
+    precision_cfg = training_cfg.get("precision", "auto")
+    precision_value = "16-mixed" if precision_cfg == "auto" and accelerator == "gpu" else precision_cfg
+    if precision_value == "auto":
+        precision_value = 32
+
     trainer = pl.Trainer(
         accelerator=accelerator,
         devices=devices,
@@ -396,10 +403,103 @@ def train_ocr(
     if wandb_logger is not None:
         wandb.finish()
 
-    logger.info(f"\nTraining complete! Results saved to {project_path / name}")
-    logger.info(f"  - Metrics CSV: {project_path / name}")
+    logger.info(f"\nTraining complete! Results saved to {project_path / experiment_name}")
+    logger.info(f"  - Metrics CSV: {project_path / experiment_name}")
     logger.info(f"  - Checkpoints: {checkpoint_dir}")
-    logger.info(f"  - W&B Dashboard: https://wandb.ai/{WANDB_ENTITY}/{WANDB_PROJECT}")
+    if wandb_logger is not None:
+        entity = wandb_cfg.get("entity", WANDB_ENTITY)
+        project = wandb_cfg.get("project", WANDB_PROJECT)
+        logger.info(f"  - W&B Dashboard: https://wandb.ai/{entity}/{project}")
+
+    return project_path, experiment_name
+
+
+@app.command()
+def train_detector(
+    data_dir: Path | None = typer.Argument(None, help="Path to CCPD dataset directory"),
+    output_dir: Path | None = typer.Option(None, help="Output directory for YOLO format data"),
+    split_dir: Path | None = typer.Option(None, help="Directory containing train/val/test split files"),
+    model_name: str | None = typer.Option(None, help="YOLOv8 model variant"),
+    epochs: int | None = typer.Option(None, help="Number of training epochs"),
+    batch_size: int | None = typer.Option(None, help="Batch size"),
+    img_size: int | None = typer.Option(None, help="Input image size (smaller = faster)"),
+    max_train_images: int | None = typer.Option(None, help="Maximum training images"),
+    max_val_images: int | None = typer.Option(None, help="Maximum validation images"),
+    project: Path | None = typer.Option(None, help="Project directory for saving results"),
+    name: str | None = typer.Option(None, help="Experiment name"),
+    config_name: str = typer.Option("config", "--config-name", help="Hydra config name to load."),
+    config_path: Path = typer.Option(CONFIGS_DIR, "--config-path", help="Directory that stores Hydra configs."),
+    overrides: list[str] | None = typer.Option(
+        None,
+        "--override",
+        "-o",
+        help="Hydra override strings (key=value). Repeat the flag for multiple overrides.",
+    ),
+) -> None:
+    """Train the license plate detector using YOLOv8 and Hydra configs."""
+
+    cfg = load_hydra_config(config_path=config_path, config_name=config_name, overrides=overrides)
+    _train_detector_with_cfg(
+        cfg,
+        data_dir=data_dir,
+        split_dir=split_dir,
+        output_dir=output_dir,
+        model_name=model_name,
+        epochs=epochs,
+        batch_size=batch_size,
+        img_size=img_size,
+        max_train_images=max_train_images,
+        max_val_images=max_val_images,
+        project=project,
+        name=name,
+    )
+
+
+@app.command()
+def train_ocr(
+    data_dir: Path | None = typer.Argument(None, help="Path to CCPD dataset directory"),
+    split_dir: Path | None = typer.Option(None, help="Directory containing train/val/test split files"),
+    batch_size: int | None = typer.Option(None, help="Batch size"),
+    max_epochs: int | None = typer.Option(None, help="Maximum number of epochs"),
+    learning_rate: float | None = typer.Option(None, help="Learning rate"),
+    hidden_size: int | None = typer.Option(None, help="LSTM hidden size"),
+    num_layers: int | None = typer.Option(None, help="Number of LSTM layers"),
+    img_height: int | None = typer.Option(None, help="Input image height (32 required for model architecture)"),
+    img_width: int | None = typer.Option(None, help="Input image width (larger = better quality, more compute)"),
+    max_images: int | None = typer.Option(None, help="Maximum total images (train/val split controlled via config)"),
+    num_workers: int | None = typer.Option(None, help="Number of dataloader workers"),
+    project: Path | None = typer.Option(None, help="Project directory for saving results"),
+    name: str | None = typer.Option(None, help="Experiment name"),
+    english_only: bool | None = typer.Option(None, help="Only predict English chars (no Chinese province)"),
+    config_name: str = typer.Option("config", "--config-name", help="Hydra config name to load."),
+    config_path: Path = typer.Option(CONFIGS_DIR, "--config-path", help="Directory that stores Hydra configs."),
+    overrides: list[str] | None = typer.Option(
+        None,
+        "--override",
+        "-o",
+        help="Hydra override strings (key=value). Repeat the flag for multiple overrides.",
+    ),
+) -> None:
+    """Train the license plate OCR model using PyTorch Lightning and Hydra configs."""
+
+    cfg = load_hydra_config(config_path=config_path, config_name=config_name, overrides=overrides)
+    _train_ocr_with_cfg(
+        cfg,
+        data_dir=data_dir,
+        split_dir=split_dir,
+        batch_size=batch_size,
+        max_epochs=max_epochs,
+        learning_rate=learning_rate,
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        img_height=img_height,
+        img_width=img_width,
+        max_images=max_images,
+        num_workers=num_workers,
+        project=project,
+        name=name,
+        english_only=english_only,
+    )
 
 
 @app.command()
@@ -429,7 +529,6 @@ def train_both(
     """
     cfg = load_hydra_config(config_path=config_path, config_name=config_name, overrides=overrides)
 
-    logger.info(f"Max images: {max_images} -> {max_train_images} train, {max_val_images} val")
     logger.info(f"Results will be saved to: {RUNS_DIR}")
     logger.info("=" * 50)
     logger.info("PHASE 1: Training License Plate Detector")
@@ -464,8 +563,8 @@ def train_both(
     logger.info("TRAINING COMPLETE!")
     logger.info("=" * 50)
     logger.info(f"\nAll results saved to: {RUNS_DIR}")
-    logger.info(f"  - Detector results: {RUNS_DIR / 'detect' / 'plate_detection'}")
-    logger.info(f"  - OCR results: {RUNS_DIR / 'ocr' / 'plate_ocr'}")
+    logger.info(f"  - Detector results: {detector_project / detector_name}")
+    logger.info(f"  - OCR results: {ocr_project / ocr_name}")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import typer
+from loguru import logger
 
 from ml_ops.model import LicensePlateRecognizer
 from ml_ops.data import parse_ccpd_filename
@@ -132,7 +133,7 @@ def visualize_ground_truth(
             color=(255, 0, 0),
         )
     except (ValueError, IndexError) as e:
-        print(f"Could not parse filename: {e}")
+        logger.error(f"Could not parse filename: {e}")
 
     if output_path:
         cv2.imwrite(output_path, image)
@@ -232,9 +233,9 @@ def visualize(
 
     predictions = recognizer.recognize(image_path)
 
-    print(f"\nFound {len(predictions)} license plate(s):")
+    logger.info(f"\nFound {len(predictions)} license plate(s):")
     for i, pred in enumerate(predictions, 1):
-        print(f"  {i}. {pred['plate_text']} (confidence: {pred['confidence']:.3f})")
+        logger.info(f"  {i}. {pred['plate_text']} (confidence: {pred['confidence']:.3f})")
 
     if compare:
         compare_prediction_ground_truth(
@@ -294,9 +295,9 @@ def batch_visualize(
             output_path=str(output_file),
             show=False,
         )
-        print(f"Processed: {img_path.name}")
+        logger.info(f"Processed: {img_path.name}")
 
-    print(f"\nSaved {len(image_paths)} visualizations to {output_dir}")
+    logger.info(f"\nSaved {len(image_paths)} visualizations to {output_dir}")
 
 
 if __name__ == "__main__":

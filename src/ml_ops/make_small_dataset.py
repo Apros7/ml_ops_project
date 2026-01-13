@@ -3,6 +3,7 @@
 import random
 import shutil
 from pathlib import Path
+from loguru import logger
 
 import typer
 from tqdm import tqdm
@@ -35,16 +36,16 @@ def make_small_dataset(
     train_dir.mkdir(parents=True, exist_ok=True)
     val_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Scanning for images in {input_dir}...")
+    logger.info(f"Scanning for images in {input_dir}...")
     image_paths = []
     for ext in ["*.jpg", "*.jpeg", "*.png"]:
         image_paths.extend(input_dir.rglob(ext))
 
-    print(f"Found {len(image_paths)} images")
+    logger.info(f"Found {len(image_paths)} images")
 
     total_needed = train_size + val_size
     if len(image_paths) < total_needed:
-        print(f"Warning: Only {len(image_paths)} images available, need {total_needed}")
+        logger.warning(f"Only {len(image_paths)} images available, need {total_needed}")
         ratio = train_size / total_needed
         train_size = int(len(image_paths) * ratio)
         val_size = len(image_paths) - train_size
@@ -55,23 +56,23 @@ def make_small_dataset(
     train_images = selected[:train_size]
     val_images = selected[train_size:]
 
-    print(f"\nCopying {len(train_images)} training images...")
+    logger.info(f"\nCopying {len(train_images)} training images...")
     for img_path in tqdm(train_images, desc="Train", unit="img"):
         shutil.copy(img_path, train_dir / img_path.name)
 
-    print(f"\nCopying {len(val_images)} validation images...")
+    logger.info(f"\nCopying {len(val_images)} validation images...")
     for img_path in tqdm(val_images, desc="Val", unit="img"):
         shutil.copy(img_path, val_dir / img_path.name)
 
-    print(f"\n{'='*50}")
-    print("Small dataset created!")
-    print(f"  Train: {len(train_images)} images -> {train_dir}")
-    print(f"  Val:   {len(val_images)} images -> {val_dir}")
-    print(f"  Total: {len(train_images) + len(val_images)} images")
-    print(f"{'='*50}")
-    print("\nTo train with this dataset:")
-    print(f"  uv run python -m ml_ops.train train-detector {output_dir}")
-    print(f"  uv run python -m ml_ops.train train-ocr {output_dir}")
+    logger.info(f"\n{'='*50}")
+    logger.info("Small dataset created!")
+    logger.info(f"  Train: {len(train_images)} images -> {train_dir}")
+    logger.info(f"  Val:   {len(val_images)} images -> {val_dir}")
+    logger.info(f"  Total: {len(train_images) + len(val_images)} images")
+    logger.info(f"{'='*50}")
+    logger.info("\nTo train with this dataset:")
+    logger.info(f"  uv run python -m ml_ops.train train-detector {output_dir}")
+    logger.info(f"  uv run python -m ml_ops.train train-ocr {output_dir}")
 
 
 if __name__ == "__main__":

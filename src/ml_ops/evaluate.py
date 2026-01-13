@@ -6,6 +6,7 @@ from typing import Any
 import typer
 import torch
 from tqdm import tqdm
+from loguru import logger
 
 from ml_ops.model import PlateDetector, PlateOCR, LicensePlateRecognizer
 from ml_ops.data import CCPDDataModule, parse_ccpd_filename
@@ -123,11 +124,11 @@ def evaluate_detector(
         "false_negatives": fn,
     }
 
-    print("\n=== Detection Evaluation Results ===")
-    print(f"Precision: {precision:.4f}")
-    print(f"Recall: {recall:.4f}")
-    print(f"F1 Score: {f1:.4f}")
-    print(f"TP: {tp}, FP: {fp}, FN: {fn}")
+    logger.info("\n=== Detection Evaluation Results ===")
+    logger.info(f"Precision: {precision:.4f}")
+    logger.info(f"Recall: {recall:.4f}")
+    logger.info(f"F1 Score: {f1:.4f}")
+    logger.info(f"TP: {tp}, FP: {fp}, FN: {fn}")
 
     return results
 
@@ -196,9 +197,9 @@ def evaluate_ocr(
         "exact_matches": exact_matches,
     }
 
-    print("\n=== OCR Evaluation Results ===")
-    print(f"Exact Match Accuracy: {exact_accuracy:.4f} ({exact_matches}/{total_samples})")
-    print(f"Character Accuracy: {char_accuracy:.4f}")
+    logger.info("\n=== OCR Evaluation Results ===")
+    logger.info(f"Exact Match Accuracy: {exact_accuracy:.4f} ({exact_matches}/{total_samples})")
+    logger.info(f"Character Accuracy: {char_accuracy:.4f}")
 
     return results
 
@@ -279,10 +280,10 @@ def evaluate_pipeline(
         "ocr_correct": ocr_correct,
     }
 
-    print("\n=== Full Pipeline Evaluation Results ===")
-    print(f"Detection Accuracy: {detection_accuracy:.4f} ({detection_correct}/{total_samples})")
-    print(f"OCR Accuracy (given correct detection): {ocr_accuracy:.4f}")
-    print(f"Full Pipeline Accuracy: {pipeline_accuracy:.4f} ({full_pipeline_correct}/{total_samples})")
+    logger.info("\n=== Full Pipeline Evaluation Results ===")
+    logger.info(f"Detection Accuracy: {detection_accuracy:.4f} ({detection_correct}/{total_samples})")
+    logger.info(f"OCR Accuracy (given correct detection): {ocr_accuracy:.4f}")
+    logger.info(f"Full Pipeline Accuracy: {pipeline_accuracy:.4f} ({full_pipeline_correct}/{total_samples})")
 
     return results
 

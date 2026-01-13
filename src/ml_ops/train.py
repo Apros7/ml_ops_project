@@ -12,6 +12,7 @@ import wandb
 from hydra import compose, initialize_config_dir
 from hydra.core.global_hydra import GlobalHydra
 from omegaconf import DictConfig
+from loguru import logger
 
 from ml_ops.model import PlateDetector, PlateOCR
 from ml_ops.data import CCPDDataModule, export_yolo_format, ENGLISH_NUM_CLASSES, NUM_CLASSES
@@ -60,7 +61,7 @@ def _start_wandb_run(wandb_cfg: DictConfig, name: str, metadata: dict[str, Any])
     entity = wandb_cfg.get("entity", WANDB_ENTITY)
     project = wandb_cfg.get("project", WANDB_PROJECT)
     wandb.init(entity=entity, project=project, name=name, config=metadata)
-    print(f"📊 Logging to Weights & Biases: {entity}/{project}")
+    logger.info(f"Logging to Weights & Biases: {entity}/{project}")
     return True
 
 
@@ -148,8 +149,8 @@ def _train_detector_with_cfg(
     project_path.mkdir(parents=True, exist_ok=True)
     resolved_output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Results will be saved to: {project_path / experiment_name}")
-    print("Step 1: Converting CCPD to YOLO format...")
+    logger.info(f"Results will be saved to: {project_path / experiment_name}")
+    logger.info("Step 1: Converting CCPD to YOLO format...")
 
     train_output = resolved_output_dir / "train"
     val_output = resolved_output_dir / "val"
@@ -158,9 +159,9 @@ def _train_detector_with_cfg(
     val_data_dir = resolved_data_dir / "val" if (resolved_data_dir / "val").exists() else resolved_data_dir
 
     if train_data_dir != resolved_data_dir:
-        print(f"Detected pre-split dataset: {resolved_data_dir}")
-        print(f"  Train folder: {train_data_dir}")
-        print(f"  Val folder: {val_data_dir}")
+        logger.info(f"Detected pre-split dataset: {resolved_data_dir}")
+        logger.info(f"  Train folder: {train_data_dir}")
+        logger.info(f"  Val folder: {val_data_dir}")
 
     train_split_file = resolved_split_dir / "train.txt" if resolved_split_dir else None
     val_split_file = resolved_split_dir / "val.txt" if resolved_split_dir else None
@@ -168,7 +169,7 @@ def _train_detector_with_cfg(
     export_yolo_format(train_data_dir, train_output, train_split_file, max_images=max_train_value)
     export_yolo_format(val_data_dir, val_output, val_split_file, max_images=max_val_value)
 
-    print("Step 2: Creating data.yaml config...")
+    logger.info("Step 2: Creating data.yaml config...")
     data_yaml_path = resolved_output_dir / "data.yaml"
     data_yaml_content = f"""
 path: {resolved_output_dir.absolute()}
@@ -181,7 +182,7 @@ names:
     with open(data_yaml_path, "w") as f:
         f.write(data_yaml_content.strip())
 
-    print("Step 3: Training YOLOv8...")
+    logger.info("Step 3: Training YOLOv8...")
 
     wandb_active = _start_wandb_run(
         wandb_cfg,
@@ -220,14 +221,14 @@ names:
 
     _finish_wandb_run(wandb_active)
 
-    print(f"\nTraining complete! Results saved to {project_path / experiment_name}")
-    print(f"  - Training curves: {project_path / experiment_name / 'results.png'}")
-    print(f"  - Metrics CSV: {project_path / experiment_name / 'results.csv'}")
-    print(f"  - Best weights: {project_path / experiment_name / 'weights' / 'best.pt'}")
+    logger.info(f"\nTraining complete! Results saved to {project_path / experiment_name}")
+    logger.info(f"  - Training curves: {project_path / experiment_name / 'results.png'}")
+    logger.info(f"  - Metrics CSV: {project_path / experiment_name / 'results.csv'}")
+    logger.info(f"  - Best weights: {project_path / experiment_name / 'weights' / 'best.pt'}")
     if wandb_active:
         entity = wandb_cfg.get("entity", WANDB_ENTITY)
         project = wandb_cfg.get("project", WANDB_PROJECT)
-        print(f"  - W&B Dashboard: https://wandb.ai/{entity}/{project}")
+        logger.info(f"  - W&B Dashboard: https://wandb.ai/{entity}/{project}")
 
     return project_path, experiment_name
 
@@ -286,16 +287,16 @@ def _train_ocr_with_cfg(
     max_train_images = int(max_images_value * train_split)
     max_val_images = max_images_value - max_train_images
 
-    print(f"Max images: {max_images_value} -> {max_train_images} train, {max_val_images} val")
-    print(f"OCR Mode: {'English-only (6 chars)' if english_only_value else 'Full (7 chars with Chinese)'}")
+    logger.info(f"Max images: {max_images_value} -> {max_train_images} train, {max_val_images} val")
+    logger.info(f"OCR Mode: {'English-only (6 chars)' if english_only_value else 'Full (7 chars with Chinese)'}")
 
     project_path.mkdir(parents=True, exist_ok=True)
     output_dir = project_path / experiment_name / "predictions"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Results will be saved to: {project_path / experiment_name}")
-    print(f"Prediction visualizations will be saved to: {output_dir}")
-    print("Setting up data module...")
+    logger.info(f"Results will be saved to: {project_path / experiment_name}")
+    logger.info(f"Prediction visualizations will be saved to: {output_dir}")
+    logger.info("Setting up data module...")
 
     data_module = CCPDDataModule(
         data_dir=resolved_data_dir,
@@ -310,7 +311,7 @@ def _train_ocr_with_cfg(
         english_only=english_only_value,
     )
 
-    print("Creating CRNN model...")
+    logger.info("Creating CRNN model...")
     model = PlateOCR(
         img_height=img_height_value,
         img_width=img_width_value,
@@ -370,8 +371,8 @@ def _train_ocr_with_cfg(
             },
         )
         loggers.append(wandb_logger)
-        print(
-            f"📊 Logging to Weights & Biases: {wandb_cfg.get('entity', WANDB_ENTITY)}/"
+        logger.info(
+            f"Logging to Weights & Biases: {wandb_cfg.get('entity', WANDB_ENTITY)}/"
             f"{wandb_cfg.get('project', WANDB_PROJECT)}"
         )
 
@@ -379,7 +380,7 @@ def _train_ocr_with_cfg(
     accelerator, devices = get_accelerator(force_cpu=force_cpu)
 
     if force_cpu:
-        print("Note: Using CPU for OCR training (CTC loss not supported on MPS)")
+        logger.warning("Note: Using CPU for OCR training (CTC loss not supported on MPS)")
 
     precision_cfg = training_cfg.get("precision", "auto")
     precision_value = "16-mixed" if precision_cfg == "auto" and accelerator == "gpu" else precision_cfg
@@ -402,13 +403,13 @@ def _train_ocr_with_cfg(
     if wandb_logger is not None:
         wandb.finish()
 
-    print(f"\nTraining complete! Results saved to {project_path / experiment_name}")
-    print(f"  - Metrics CSV: {project_path / experiment_name}")
-    print(f"  - Checkpoints: {checkpoint_dir}")
+    logger.info(f"\nTraining complete! Results saved to {project_path / experiment_name}")
+    logger.info(f"  - Metrics CSV: {project_path / experiment_name}")
+    logger.info(f"  - Checkpoints: {checkpoint_dir}")
     if wandb_logger is not None:
         entity = wandb_cfg.get("entity", WANDB_ENTITY)
         project = wandb_cfg.get("project", WANDB_PROJECT)
-        print(f"  - W&B Dashboard: https://wandb.ai/{entity}/{project}")
+        logger.info(f"  - W&B Dashboard: https://wandb.ai/{entity}/{project}")
 
     return project_path, experiment_name
 
@@ -528,10 +529,10 @@ def train_both(
     """
     cfg = load_hydra_config(config_path=config_path, config_name=config_name, overrides=overrides)
 
-    print(f"Results will be saved to: {RUNS_DIR}")
-    print("=" * 50)
-    print("PHASE 1: Training License Plate Detector")
-    print("=" * 50)
+    logger.info(f"Results will be saved to: {RUNS_DIR}")
+    logger.info("=" * 50)
+    logger.info("PHASE 1: Training License Plate Detector")
+    logger.info("=" * 50)
 
     detector_project, detector_name = _train_detector_with_cfg(
         cfg,
@@ -544,9 +545,9 @@ def train_both(
         name=None,
     )
 
-    print("\n" + "=" * 50)
-    print("PHASE 2: Training License Plate OCR")
-    print("=" * 50)
+    logger.info("\n" + "=" * 50)
+    logger.info("PHASE 2: Training License Plate OCR")
+    logger.info("=" * 50)
 
     ocr_project, ocr_name = _train_ocr_with_cfg(
         cfg,
@@ -558,12 +559,12 @@ def train_both(
         english_only=english_only,
     )
 
-    print("\n" + "=" * 50)
-    print("TRAINING COMPLETE!")
-    print("=" * 50)
-    print(f"\nAll results saved to: {RUNS_DIR}")
-    print(f"  - Detector results: {detector_project / detector_name}")
-    print(f"  - OCR results: {ocr_project / ocr_name}")
+    logger.info("\n" + "=" * 50)
+    logger.info("TRAINING COMPLETE!")
+    logger.info("=" * 50)
+    logger.info(f"\nAll results saved to: {RUNS_DIR}")
+    logger.info(f"  - Detector results: {detector_project / detector_name}")
+    logger.info(f"  - OCR results: {ocr_project / ocr_name}")
 
 
 if __name__ == "__main__":

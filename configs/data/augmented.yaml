@@ -6,6 +6,5 @@ train_split: 0.8
 max_total_images: 10000
 max_train_images: 8000
 max_val_images: 2000
-english_only: false
 num_workers: 8
 augmentation: "strong"

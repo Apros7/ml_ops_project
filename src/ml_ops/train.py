@@ -8,6 +8,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from pytorch_lightning.loggers import CSVLogger, WandbLogger
 import wandb
+from loguru import logger
 
 from ml_ops.model import PlateDetector, PlateOCR
 from ml_ops.data import CCPDDataModule, export_yolo_format, ENGLISH_NUM_CLASSES, NUM_CLASSES
@@ -70,8 +71,8 @@ def train_detector(
     project_path = Path(project) if project else RUNS_DIR / "detect"
     project_path.mkdir(parents=True, exist_ok=True)
 
-    print(f"Results will be saved to: {project_path / name}")
-    print("Step 1: Converting CCPD to YOLO format...")
+    logger.info(f"Results will be saved to: {project_path / name}")
+    logger.info("Step 1: Converting CCPD to YOLO format...")
 
     train_output = output_dir / "train"
     val_output = output_dir / "val"
@@ -80,9 +81,9 @@ def train_detector(
     val_data_dir = data_dir / "val" if (data_dir / "val").exists() else data_dir
 
     if train_data_dir != data_dir:
-        print(f"Detected pre-split dataset: {data_dir}")
-        print(f"  Train folder: {train_data_dir}")
-        print(f"  Val folder: {val_data_dir}")
+        logger.warning(f"Detected pre-split dataset: {data_dir}")
+        logger.warning(f"  Train folder: {train_data_dir}")
+        logger.warning(f"  Val folder: {val_data_dir}")
 
     train_split = split_dir / "train.txt" if split_dir else None
     val_split = split_dir / "val.txt" if split_dir else None
@@ -90,7 +91,7 @@ def train_detector(
     export_yolo_format(train_data_dir, train_output, train_split, max_images=max_train_images)
     export_yolo_format(val_data_dir, val_output, val_split, max_images=max_val_images)
 
-    print("Step 2: Creating data.yaml config...")
+    logger.info("Step 2: Creating data.yaml config...")
     data_yaml_path = output_dir / "data.yaml"
     data_yaml_content = f"""
 path: {output_dir.absolute()}
@@ -103,7 +104,7 @@ names:
     with open(data_yaml_path, "w") as f:
         f.write(data_yaml_content.strip())
 
-    print("Step 3: Training YOLOv8...")
+    logger.info("Step 3: Training YOLOv8...")
 
     # Initialize W&B for detector training
     wandb.init(
@@ -122,7 +123,7 @@ names:
             "dataset": "CCPD2019",
         },
     )
-    print(f"📊 Logging to Weights & Biases: {WANDB_ENTITY}/{WANDB_PROJECT}")
+    logger.info(f"Logging to Weights & Biases: {WANDB_ENTITY}/{WANDB_PROJECT}")
 
     detector = PlateDetector(model_name=model_name)
 
@@ -142,11 +143,11 @@ names:
     # Finish wandb run
     wandb.finish()
 
-    print(f"\nTraining complete! Results saved to {project_path / name}")
-    print(f"  - Training curves: {project_path / name / 'results.png'}")
-    print(f"  - Metrics CSV: {project_path / name / 'results.csv'}")
-    print(f"  - Best weights: {project_path / name / 'weights' / 'best.pt'}")
-    print(f"  - W&B Dashboard: https://wandb.ai/{WANDB_ENTITY}/{WANDB_PROJECT}")
+    logger.info(f"\nTraining complete! Results saved to {project_path / name}")
+    logger.info(f"  - Training curves: {project_path / name / 'results.png'}")
+    logger.info(f"  - Metrics CSV: {project_path / name / 'results.csv'}")
+    logger.info(f"  - Best weights: {project_path / name / 'weights' / 'best.pt'}")
+    logger.info(f"  - W&B Dashboard: https://wandb.ai/{WANDB_ENTITY}/{WANDB_PROJECT}")
 
 
 @app.command()
@@ -179,19 +180,19 @@ def train_ocr(
     """
     max_train_images = int(max_images * 0.8)
     max_val_images = max_images - max_train_images
-    print(f"Max images: {max_images} -> {max_train_images} train, {max_val_images} val")
+    logger.info(f"Max images: {max_images} -> {max_train_images} train, {max_val_images} val")
     project_path = Path(project) if project else RUNS_DIR / "ocr"
     project_path.mkdir(parents=True, exist_ok=True)
 
     mode_str = "English-only (6 chars)" if english_only else "Full (7 chars with Chinese)"
-    print(f"OCR Mode: {mode_str}")
+    logger.info(f"OCR Mode: {mode_str}")
 
     output_dir = project_path / name / "predictions"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Results will be saved to: {project_path / name}")
-    print(f"Prediction visualizations will be saved to: {output_dir}")
-    print("Setting up data module...")
+    logger.info(f"Results will be saved to: {project_path / name}")
+    logger.info(f"Prediction visualizations will be saved to: {output_dir}")
+    logger.info("Setting up data module...")
     data_module = CCPDDataModule(
         data_dir=data_dir,
         split_dir=split_dir,
@@ -205,7 +206,7 @@ def train_ocr(
         english_only=english_only,
     )
 
-    print("Creating CRNN model...")
+    logger.info("Creating CRNN model...")
     model = PlateOCR(
         img_height=img_height,
         img_width=img_width,
@@ -264,15 +265,15 @@ def train_ocr(
             "dataset": "CCPD2019",
         },
     )
-    print(f"📊 Logging to Weights & Biases: {WANDB_ENTITY}/{WANDB_PROJECT}")
+    logger.info(f"Logging to Weights & Biases: {WANDB_ENTITY}/{WANDB_PROJECT}")
 
     # CTC loss is not supported on MPS (Apple Silicon), so force CPU on Mac
     force_cpu = torch.backends.mps.is_available()
     accelerator, devices = get_accelerator(force_cpu=force_cpu)
 
     if force_cpu:
-        print("Note: Using CPU for OCR training (CTC loss not supported on MPS)")
-    print(f"Training on {accelerator}...")
+        logger.warning("Using CPU for OCR training (CTC loss not supported on MPS)")
+    logger.info(f"Training on {accelerator}...")
     trainer = pl.Trainer(
         accelerator=accelerator,
         devices=devices,
@@ -289,10 +290,10 @@ def train_ocr(
     # Finish wandb run
     wandb.finish()
 
-    print(f"\nTraining complete! Results saved to {project_path / name}")
-    print(f"  - Metrics CSV: {project_path / name}")
-    print(f"  - Checkpoints: {checkpoint_dir}")
-    print(f"  - W&B Dashboard: https://wandb.ai/{WANDB_ENTITY}/{WANDB_PROJECT}")
+    logger.info(f"\nTraining complete! Results saved to {project_path / name}")
+    logger.info(f"  - Metrics CSV: {project_path / name}")
+    logger.info(f"  - Checkpoints: {checkpoint_dir}")
+    logger.info(f"  - W&B Dashboard: https://wandb.ai/{WANDB_ENTITY}/{WANDB_PROJECT}")
 
 
 @app.command()
@@ -314,11 +315,11 @@ def train_both(
     max_train_images = int(max_images * 0.8)
     max_val_images = max_images - max_train_images
 
-    print(f"Max images: {max_images} -> {max_train_images} train, {max_val_images} val")
-    print(f"Results will be saved to: {RUNS_DIR}")
-    print("=" * 50)
-    print("PHASE 1: Training License Plate Detector")
-    print("=" * 50)
+    logger.info(f"Max images: {max_images} -> {max_train_images} train, {max_val_images} val")
+    logger.info(f"Results will be saved to: {RUNS_DIR}")
+    logger.info("=" * 50)
+    logger.info("PHASE 1: Training License Plate Detector")
+    logger.info("=" * 50)
 
     train_detector(
         data_dir=data_dir,
@@ -334,9 +335,9 @@ def train_both(
         name="plate_detection",
     )
 
-    print("\n" + "=" * 50)
-    print("PHASE 2: Training License Plate OCR")
-    print("=" * 50)
+    logger.info("\n" + "=" * 50)
+    logger.info("PHASE 2: Training License Plate OCR")
+    logger.info("=" * 50)
 
     train_ocr(
         data_dir=data_dir,
@@ -355,12 +356,12 @@ def train_both(
         english_only=english_only,
     )
 
-    print("\n" + "=" * 50)
-    print("TRAINING COMPLETE!")
-    print("=" * 50)
-    print(f"\nAll results saved to: {RUNS_DIR}")
-    print(f"  - Detector results: {RUNS_DIR / 'detect' / 'plate_detection'}")
-    print(f"  - OCR results: {RUNS_DIR / 'ocr' / 'plate_ocr'}")
+    logger.info("\n" + "=" * 50)
+    logger.info("TRAINING COMPLETE!")
+    logger.info("=" * 50)
+    logger.info(f"\nAll results saved to: {RUNS_DIR}")
+    logger.info(f"  - Detector results: {RUNS_DIR / 'detect' / 'plate_detection'}")
+    logger.info(f"  - OCR results: {RUNS_DIR / 'ocr' / 'plate_ocr'}")
 
 
 if __name__ == "__main__":

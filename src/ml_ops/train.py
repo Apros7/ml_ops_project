@@ -114,7 +114,11 @@ def _train_detector_with_cfg(
 
     resolved_data_dir = _normalize_path(data_dir) or _normalize_path(data_cfg.get("data_dir")) or PROJECT_ROOT / "data"
     resolved_split_dir = _normalize_path(split_dir) or _normalize_path(data_cfg.get("split_dir"))
-    resolved_output_dir = _normalize_path(output_dir) or _normalize_path(data_cfg.get("processed_yolo_dir")) or PROJECT_ROOT / "data" / "processed" / "yolo"
+    resolved_output_dir = (
+        _normalize_path(output_dir)
+        or _normalize_path(data_cfg.get("processed_yolo_dir"))
+        or PROJECT_ROOT / "data" / "processed" / "yolo"
+    )
     project_path = _normalize_path(project) or _normalize_path(training_cfg.get("project_dir")) or RUNS_DIR / "detect"
     experiment_name = name or training_cfg.get("experiment_name", "plate_detection")
 

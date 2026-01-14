@@ -39,6 +39,7 @@ dependencies = [
     "wandb>=0.23.1",
     "easyocr>=1.7.0",
     "matplotlib>=3.7.0",
+    "python-multipart>=0.0.7",
 ]
 
 [dependency-groups]

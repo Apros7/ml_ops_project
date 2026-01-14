@@ -1,0 +1,62 @@
+name: Build and Deploy API
+
+on:
+  workflow_dispatch:
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - "src/**"  
+  #     - "dockerfiles/api.dockerfile"
+  #     - "pyproject.toml"
+  #     - "uv.lock"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      PROJECT_ID: mlops-license-plate-484109
+      REGION: europe-west1
+      REPOSITORY: license-plate-repo
+      IMAGE_NAME: mlops-api
+      SERVICE_NAME: license-plate-api
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        token_format: access_token
+        workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+    - name: Configure Docker for Artifact Registry
+      run: |
+        gcloud auth configure-docker $REGION-docker.pkg.dev
+
+    - name: Build Docker image
+      run: |
+        docker build -f dockerfiles/api.dockerfile -t $IMAGE_NAME:latest .
+
+    - name: Tag and push image to Artifact Registry
+      run: |
+        IMAGE_URI="$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE_NAME:latest"
+        docker tag $IMAGE_NAME:latest $IMAGE_URI
+        docker push $IMAGE_URI
+        echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+
+    - name: Deploy to Cloud Run
+      run: |
+        gcloud run deploy $SERVICE_NAME \
+          --image $IMAGE_URI \
+          --region $REGION \
+          --platform managed \
+          --allow-unauthenticated \
+          --port 8000

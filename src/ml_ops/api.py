@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel
 
 app = FastAPI(
@@ -12,6 +12,45 @@ app = FastAPI(
     description="Detect and recognize license plates in images",
     version="1.0.0",
 )
+
+@app.get("/", response_class=HTMLResponse)
+async def index():
+    return """
+    <html>
+      <head>
+        <title>License Plate Recognition</title>
+      </head>
+      <body>
+        <h1>License Plate Recognition</h1>
+        <h2>Recognize (detect + OCR)</h2>
+        <form action="/recognize" enctype="multipart/form-data" method="post">
+          <label>Image:</label>
+          <input name="file" type="file" accept="image/*" required />
+          <br/>
+          <label>Confidence threshold:</label>
+          <input name="conf_threshold" type="number" step="0.01" value="0.25" />
+          <br/><br/>
+          <button type="submit">Upload & Recognize</button>
+        </form>
+
+        <hr/>
+
+        <h2>Detect only (no OCR)</h2>
+        <form action="/detect" enctype="multipart/form-data" method="post">
+          <label>Image:</label>
+          <input name="file" type="file" accept="image/*" required />
+          <br/>
+          <label>Confidence threshold:</label>
+          <input name="conf_threshold" type="number" step="0.01" value="0.25" />
+          <br/><br/>
+          <button type="submit">Upload & Detect</button>
+        </form>
+
+        <p>For full interactive docs, see <a href="/docs">/docs</a>.</p>
+      </body>
+    </html>
+    """
+
 
 recognizer = None
 

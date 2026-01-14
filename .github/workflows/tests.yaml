@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+
 jobs:
   test:
     runs-on: ${{ matrix.operating-system }}
@@ -17,6 +18,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Cache DVC data
+        uses: actions/cache@v4
+        with:
+          path: .dvc/cache
+          key: ${{ runner.os }}-dvc-${{ hashFiles('data.dvc') }}
+          restore-keys: |
+            ${{ runner.os }}-dvc-
+
+      - name: Cache model weights
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/torch
+            ~/.EasyOCR
+          key: ${{ runner.os }}-models-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-models-
+
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -27,6 +46,11 @@ jobs:
         run: |
           uv sync --locked --dev
           uv tree
+
+      - name: dvc pull
+        run: dvc pull
+        env:
+          DVC_NO_ANALYTICS: "true"
 
       - name: Run tests & coverage
         run: |

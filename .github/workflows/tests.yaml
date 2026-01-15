@@ -63,6 +63,7 @@ jobs:
           uv tree
 
       - name: Authenticate to Google Cloud
+        id: auth
         uses: google-github-actions/auth@v2
         with:
           token_format: access_token
@@ -77,6 +78,7 @@ jobs:
       - name: dvc pull
         run: uv run dvc pull
         env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
           DVC_NO_ANALYTICS: "true"
 
       - name: Run tests & coverage

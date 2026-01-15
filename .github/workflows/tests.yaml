@@ -19,6 +19,13 @@ jobs:
         python-version: ["3.12", "3.11"]
         pytorch-version: ["2.6.0", "2.5.1"]
 
+    env:
+      PROJECT_ID: mlops-license-plate-484109
+      REGION: europe-west1
+      REPOSITORY: license-plate-repo
+      IMAGE_NAME: mlops-api
+      SERVICE_NAME: license-plate-api
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -67,8 +74,8 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           token_format: access_token
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER_DATA_BUCKET }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_DATA_BUCKET }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
           audience: https://github.com/Apros7/ml_ops_project
 
       - name: Install matrix-selected PyTorch

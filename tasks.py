@@ -29,6 +29,9 @@ Available tasks:
 
     Docker:
         uv run invoke docker-build            # Build docker images
+    
+    API:
+        uv run invoke api                     # Run the FastAPI service
 """
 
 import os
@@ -73,6 +76,14 @@ def train_detector(
         f"--max-train-images {max_train} --max-val-images {max_val} "
         f"--epochs {epochs} --batch-size {batch_size}"
     )
+    ctx.run(cmd, echo=True, pty=not WINDOWS)
+
+
+@task
+def api(ctx: Context, host: str = "0.0.0.0", port: int = 8000) -> None:
+    """Run the FastAPI service for license plate recognition."""
+
+    cmd = f"uv run uvicorn ml_ops.api:app --host {host} --port {port}"
     ctx.run(cmd, echo=True, pty=not WINDOWS)
 
 

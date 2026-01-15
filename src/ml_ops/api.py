@@ -13,6 +13,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     return """

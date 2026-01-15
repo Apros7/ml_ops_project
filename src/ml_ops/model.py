@@ -20,6 +20,7 @@ from ml_ops.data import (
     ENGLISH_BLANK_IDX,
     english_indices_to_plate_text,
 )
+from ml_ops.profile import torch_profiler, should_profile
 
 
 class PlateDetector(pl.LightningModule):
@@ -268,6 +269,8 @@ class PlateOCR(pl.LightningModule):
         max_epochs: int = 15,
         output_dir: str | None = None,
         english_only: bool = False,
+        enable_profiling: bool = False,
+        profile_every_n_steps: int = 100,
     ) -> None:
         """Initialize PlateOCR module.
 
@@ -281,11 +284,15 @@ class PlateOCR(pl.LightningModule):
             max_epochs: Maximum epochs for OneCycleLR scheduler.
             output_dir: Directory to save prediction visualizations.
             english_only: If True, predict only English chars (positions 2-7).
+            enable_profiling: Whether to enable profiling.
+            profile_every_n_steps: Profile every N training steps.
         """
         super().__init__()
         self.save_hyperparameters()
 
         self.english_only = english_only
+        self.enable_profiling = enable_profiling
+        self.profile_every_n_steps = profile_every_n_steps
 
         self.model = CRNN(
             img_height=img_height,
@@ -364,15 +371,24 @@ class PlateOCR(pl.LightningModule):
         label_lengths = batch["label_lengths"]
         plate_texts = batch["plate_texts"]
 
-        log_probs = self(images)
+        # Profile training step if enabled
+        profile_this_step = should_profile(batch_idx, self.profile_every_n_steps) if self.enable_profiling else False
+        output_dir = self.output_dir.parent / "profiling" if self.output_dir else None
 
-        seq_len = log_probs.size(0)
-        batch_size = log_probs.size(1)
-        input_lengths = torch.full((batch_size,), seq_len, dtype=torch.long, device=self.device)
+        with torch_profiler(
+            enabled=profile_this_step,
+            output_dir=output_dir,
+            trace_name=f"train_step_{batch_idx}",
+        ):
+            log_probs = self(images)
 
-        labels_flat = labels.flatten()
+            seq_len = log_probs.size(0)
+            batch_size = log_probs.size(1)
+            input_lengths = torch.full((batch_size,), seq_len, dtype=torch.long, device=self.device)
 
-        loss = self.ctc_loss(log_probs, labels_flat, input_lengths, label_lengths)
+            labels_flat = labels.flatten()
+
+            loss = self.ctc_loss(log_probs, labels_flat, input_lengths, label_lengths)
 
         # Decode predictions for training metrics (every 50 steps to save compute)
         if batch_idx % 50 == 0:
@@ -401,15 +417,24 @@ class PlateOCR(pl.LightningModule):
         label_lengths = batch["label_lengths"]
         plate_texts = batch["plate_texts"]
 
-        log_probs = self(images)
+        # Profile validation step if enabled (only first batch of epoch)
+        profile_this_step = self.enable_profiling and batch_idx == 0
+        output_dir = self.output_dir.parent / "profiling" if self.output_dir else None
 
-        seq_len = log_probs.size(0)
-        batch_size = log_probs.size(1)
-        input_lengths = torch.full((batch_size,), seq_len, dtype=torch.long, device=self.device)
+        with torch_profiler(
+            enabled=profile_this_step,
+            output_dir=output_dir,
+            trace_name=f"val_step_epoch_{self.current_epoch}",
+        ):
+            log_probs = self(images)
 
-        labels_flat = labels.flatten()
+            seq_len = log_probs.size(0)
+            batch_size = log_probs.size(1)
+            input_lengths = torch.full((batch_size,), seq_len, dtype=torch.long, device=self.device)
 
-        loss = self.ctc_loss(log_probs, labels_flat, input_lengths, label_lengths)
+            labels_flat = labels.flatten()
+
+            loss = self.ctc_loss(log_probs, labels_flat, input_lengths, label_lengths)
 
         preds = self.decode(log_probs)
         correct = sum(1 for pred, gt in zip(preds, plate_texts) if pred == gt)

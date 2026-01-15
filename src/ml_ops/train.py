@@ -1,5 +1,6 @@
 """Training scripts for license plate detection and OCR."""
 
+import csv
 from pathlib import Path
 from typing import Any
 
@@ -70,6 +71,35 @@ def _finish_wandb_run(active: bool) -> None:
 
     if active:
         wandb.finish()
+
+
+def _log_yolo_results_to_wandb(results_file: Path) -> None:
+    """Stream YOLO results.csv metrics to the active W&B run if present."""
+
+    if not results_file.exists():
+        logger.warning(f"W&B logging skipped, results file not found: {results_file}")
+        return
+
+    with results_file.open() as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            payload: dict[str, float | int | str] = {}
+            for key, value in row.items():
+                if value is None:
+                    continue
+                if key.lower() == "epoch":
+                    try:
+                        payload["epoch"] = int(float(value))
+                    except ValueError:
+                        payload["epoch"] = value
+                    continue
+                try:
+                    payload[key] = float(value)
+                except ValueError:
+                    payload[key] = value
+
+            if payload:
+                wandb.log(payload, step=payload.get("epoch"))
 
 
 def get_accelerator(force_cpu: bool = False) -> tuple[str, str]:
@@ -218,6 +248,10 @@ names:
         project=str(project_path),
         name=experiment_name,
     )
+
+    if wandb_active:
+        results_file = project_path / experiment_name / "results.csv"
+        _log_yolo_results_to_wandb(results_file)
 
     _finish_wandb_run(wandb_active)
 

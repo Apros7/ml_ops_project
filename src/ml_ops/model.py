@@ -207,7 +207,8 @@ class CRNN(nn.Module):
             dropout=dropout if num_layers > 1 else 0,
         )
 
-        self.fc = nn.Linear(hidden_size * 2, num_classes + 1)
+        # Use mode-dependent class count so English-only outputs 34+1 instead of default 69+1
+        self.fc = nn.Linear(hidden_size * 2, self.num_classes + 1)
 
         self._init_weights()
 

@@ -29,7 +29,7 @@ Available tasks:
 
     Docker:
         uv run invoke docker-build            # Build docker images
-    
+
     API:
         uv run invoke api                     # Run the FastAPI service
 """
@@ -45,7 +45,6 @@ PYTHON_VERSION = "3.12"
 # Default data directory
 DEFAULT_DATA_DIR = "data/base"
 # DEFAULT_DATA_DIR = "data/ccpd_tiny"
-
 
 
 # ============================================================================

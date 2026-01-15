@@ -612,8 +612,8 @@ class LicensePlateRecognizer:
         self,
         image_path: str,
         conf_threshold: float = 0.25,
-        img_height: int = 48,
-        img_width: int = 168,
+        img_height: int | None = None,
+        img_width: int | None = None,
     ) -> list[dict]:
         """Recognize license plates in an image.
 
@@ -633,6 +633,9 @@ class LicensePlateRecognizer:
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
+        target_h = img_height or getattr(self.ocr, "hparams", {}).get("img_height", 32)
+        target_w = img_width or getattr(self.ocr, "hparams", {}).get("img_width", 200)
+
         recognitions = []
         for result in results:
             boxes = result.boxes
@@ -649,7 +652,7 @@ class LicensePlateRecognizer:
                 if plate_crop.size == 0:
                     continue
 
-                plate_resized = cv2.resize(plate_crop, (img_width, img_height))
+                plate_resized = cv2.resize(plate_crop, (target_w, target_h))
                 plate_tensor = torch.from_numpy(plate_resized).permute(2, 0, 1).float() / 255.0
                 plate_tensor = plate_tensor.unsqueeze(0).to(self.device)
 
@@ -671,7 +674,7 @@ class LicensePlateRecognizer:
 if __name__ == "__main__":
     logger.debug("Testing CRNN model...")
     model = CRNN()
-    x = torch.randn(2, 3, 48, 168)
+    x = torch.randn(2, 3, 32, 200)
     output = model(x)
     logger.debug(f"Input shape: {x.shape}")
     logger.debug(f"Output shape: {output.shape}")

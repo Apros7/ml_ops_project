@@ -64,7 +64,7 @@ jobs:
           uv pip install "torch==${{ matrix.pytorch-version }}" --index-url https://download.pytorch.org/whl/cpu
 
       - name: dvc pull
-        run: dvc pull
+        run: uv run dvc pull
         env:
           DVC_NO_ANALYTICS: "true"
 

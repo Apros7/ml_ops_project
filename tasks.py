@@ -29,7 +29,7 @@ Available tasks:
 
     Docker:
         uv run invoke docker-build            # Build docker images
-    
+
     API:
         uv run invoke api                     # Run the FastAPI service
 """

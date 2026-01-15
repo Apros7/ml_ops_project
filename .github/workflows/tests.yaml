@@ -10,13 +10,25 @@ jobs:
   test:
     runs-on: ${{ matrix.operating-system }}
     strategy:
+      fail-fast: false
       matrix:
         operating-system: ["ubuntu-latest", "windows-latest", "macos-latest"]
         python-version: ["3.12", "3.11"]
+        pytorch-version: ["2.6.0", "2.5.1"]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Cache uv and pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            ~/.cache/pip
+          key: ${{ runner.os }}-uv-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-${{ matrix.python-version }}-
 
       - name: Cache DVC data
         uses: actions/cache@v4
@@ -46,6 +58,10 @@ jobs:
         run: |
           uv sync --locked --dev
           uv tree
+
+      - name: Install matrix-selected PyTorch
+        run: |
+          uv pip install "torch==${{ matrix.pytorch-version }}" --index-url https://download.pytorch.org/whl/cpu
 
       - name: dvc pull
         run: dvc pull

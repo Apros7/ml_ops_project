@@ -1,0 +1,57 @@
+name: Data Change Checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "data/**"
+      - "data.dvc"
+  pull_request:
+    branches: [main]
+    paths:
+      - "data/**"
+      - "data.dvc"
+
+jobs:
+  data-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache uv and pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            ~/.cache/pip
+          key: ${{ runner.os }}-uv-data-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-data-
+
+      - name: Cache DVC data
+        uses: actions/cache@v4
+        with:
+          path: .dvc/cache
+          key: ${{ runner.os }}-dvc-data-${{ hashFiles('data.dvc') }}
+          restore-keys: |
+            ${{ runner.os }}-dvc-data-
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: |
+          uv sync --locked --dev
+          uv tree
+
+      - name: Pull data artifacts
+        run: dvc pull
+        env:
+          DVC_NO_ANALYTICS: "true"
+
+      - name: Run data checks
+        run: uv run pytest tests/test_data.py

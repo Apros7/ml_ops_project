@@ -214,7 +214,7 @@ pre-commit install
 
 --- question 6 fill here ---
 
-We enforced code quality with Ruff for linting and formatting, and pre-commit hooks to keep the codebase consistent. For typing and documentation we have not used any strict guidelines. However, for larger projects, these concepts are important because they ensure easier maintainability and collaboration, thus effieciency. It ensures that cross team coworkers easily can read, understand and write code without introducing foreignass.
+We enforced code quality with Ruff for linting and formatting, and pre-commit hooks to keep the codebase consistent. For typing and documentation we have not used any strict guidelines. However, for larger projects, these concepts are important because they ensure easier maintainability and collaboration, thus efficiency. It ensures that cross team coworkers easily can read, understand and write code without introducing foreign errors.
 
 ## Version control
 

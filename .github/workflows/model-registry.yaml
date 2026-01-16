@@ -1,0 +1,55 @@
+name: Model Registry Checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "configs/model/**"
+      - "models/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "configs/model/**"
+      - "models/**"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  model-registry:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache uv and pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            ~/.cache/pip
+          key: ${{ runner.os }}-uv-model-registry-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-model-registry-
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          uv sync --locked --dev
+          uv tree
+
+      - name: Install torch (CPU)
+        run: |
+          uv pip install "torch==2.6.0" --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Run model checks
+        run: uv run pytest tests/test_model.py

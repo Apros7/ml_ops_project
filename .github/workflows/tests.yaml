@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
     permissions:
@@ -76,12 +80,6 @@ jobs:
           cat <<'EOF' > "$GOOGLE_APPLICATION_CREDENTIALS"
           ${{ secrets.GCP_SA_KEY }}
           EOF
-
-      - name: Authenticate to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Install matrix-selected PyTorch
         run: |

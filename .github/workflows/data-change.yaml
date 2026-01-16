@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set cred_path and GOOGLE_APPLICATION_CREDENTIALS
-        run: 
+        run:
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-key.json" >> "$GITHUB_ENV"
           echo "DVC_REMOTE_STORAGE_CREDENTIALPATH=$GOOGLE_APPLICATION_CREDENTIALS" >> "$GITHUB_ENV"
 
@@ -66,8 +66,16 @@ jobs:
           ${{ secrets.GCP_SA_KEY }}
           EOF
 
+      - name: Configure DVC credential path
+        run: |
+          uv run dvc remote modify --local storage credentialpath "$GOOGLE_APPLICATION_CREDENTIALS"
+
       - name: Pull data artifacts
         run: uv run dvc pull
+        env:
+          GDRIVE_CREDENTIALS_DATA: ${{ secrets.GCP_SA_KEY }}
+          GOOGLE_APPLICATION_CREDENTIALS: $RUNNER_TEMP/gcp-key.json
+          DVC_REMOTE_STORAGE_CREDENTIALPATH: $GOOGLE_APPLICATION_CREDENTIALS
 
       - name: Run data checks
         run: uv run pytest tests/test_data.py

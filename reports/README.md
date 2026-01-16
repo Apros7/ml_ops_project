@@ -235,7 +235,7 @@ We enforced code quality with Ruff for linting and formatting, and pre-commit ho
 
 --- question 7 fill here ---
 
-We implemented 12 tests across model, data, api and training. For training we are merely testing if the configuration used is valid. For the model, we are testing the forward pass of the detector and OCR, to ensure correct output shapes. Similarily for the data, where we primarily test for proper input dimensions and labels. For the API, we test the endpoints for valid and invalid inputs.
+We implemented 12 tests across model, data, api and training. For training we are merely testing if the configuration used is valid. For the model, we are testing the forward pass of the detector and OCR, to ensure correct output shapes. Similarly for the data, where we primarily test for proper input dimensions and labels. For the API, we test the endpoints for valid and invalid inputs.
 
 ### Question 8
 

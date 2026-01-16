@@ -29,6 +29,7 @@ jobs:
       REPOSITORY: license-plate-repo
       IMAGE_NAME: mlops-api
       SERVICE_NAME: license-plate-api
+      GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
 
 
     steps:
@@ -94,10 +95,16 @@ jobs:
           ls -l "$GOOGLE_APPLICATION_CREDENTIALS"
           python -c "import json, os; path=os.environ['GOOGLE_APPLICATION_CREDENTIALS']; data=json.load(open(path)); print('client_email:', data.get('client_email')); print('project_id:', data.get('project_id')); print('type:', data.get('type'))"
 
+      - name: Configure DVC credential path
+        run: |
+          uv run dvc remote modify --local storage credentialpath "$GOOGLE_APPLICATION_CREDENTIALS"
+
       - name: dvc pull
         run: uv run dvc pull
         env:
           GDRIVE_CREDENTIALS_DATA: ${{ secrets.GCP_SA_KEY }}
+          GOOGLE_APPLICATION_CREDENTIALS: $RUNNER_TEMP/gcp-key.json
+          DVC_REMOTE_STORAGE_CREDENTIALPATH: $GOOGLE_APPLICATION_CREDENTIALS
 
       - name: Run tests & coverage
         run: |

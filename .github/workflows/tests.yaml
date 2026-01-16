@@ -73,17 +73,15 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          token_format: access_token
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-          audience: https://github.com/Apros7/ml_ops_project
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Install matrix-selected PyTorch
         run: |
           uv pip install "torch==${{ matrix.pytorch-version }}" --index-url https://download.pytorch.org/whl/cpu
 
       - name: dvc pull
-        run: uv run dvc pull
+        run: 
+          uv run dvc pull
 
       - name: Run tests & coverage
         run: |

@@ -55,10 +55,7 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          token_format: access_token
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER_DATA_BUCKET }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_DATA_BUCKET }}
-          audience: https://github.com/Apros7/ml_ops_project
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Pull data artifacts
         run: uv run dvc pull

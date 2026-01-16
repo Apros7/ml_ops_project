@@ -33,7 +33,7 @@ jobs:
           echo "DVC_REMOTE_STORAGE_CREDENTIALPATH=$GOOGLE_APPLICATION_CREDENTIALS" >> "$GITHUB_ENV"
 
       - name: Cache uv and pip
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/uv
@@ -43,7 +43,7 @@ jobs:
             ${{ runner.os }}-uv-data-
 
       - name: Cache DVC data
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .dvc/cache
           key: ${{ runner.os }}-dvc-data-${{ hashFiles('data.dvc') }}

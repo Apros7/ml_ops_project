@@ -1,70 +1,53 @@
 # ml_ops
 
-DTU ML Ops course project
+DTU ML Ops course project: license plate recognition.
 
-## Project Description
+## Project description
 
-Overall goal of the project:
+This repository trains and serves a two-stage pipeline:
 
-Read license plate from image
+- License plate detection (YOLOv8)
+- License plate text recognition (CRNN + EasyOCR baselines)
 
-What data are you going to run on (initially, may change):
+## Data
 
-The data comes from 2 datasets, one with license plates from this source:
-https://www.kaggle.com/datasets/raj4126/alpr-license-plates
+We use two public datasets:
 
-And ine of chinese license plates from this source:
-https://www.kaggle.com/datasets/binh234/ccpd2019
-
-What models do you expect to use:
-
-We are going to use object detection models such as YOLO and recogntion models based on CNNs.
+- https://www.kaggle.com/datasets/raj4126/alpr-license-plates
+- https://www.kaggle.com/datasets/binh234/ccpd2019
 
 ## Project structure
 
-The directory structure of the project looks like this:
+The project is organized as follows:
 ```txt
 ├── .github/                  # Github actions and dependabot
 │   ├── dependabot.yaml
 │   └── workflows/
 │       └── tests.yaml
-├── configs/                  # Configuration files
-├── data/                     # Data directory
-│   ├── processed
-│   └── raw
-├── dockerfiles/              # Dockerfiles
-│   ├── api.Dockerfile
-│   └── train.Dockerfile
-├── docs/                     # Documentation
-│   ├── mkdocs.yml
-│   └── source/
-│       └── index.md
-├── models/                   # Trained models
-├── notebooks/                # Jupyter notebooks
-├── reports/                  # Reports
-│   └── figures/
+├── configs/                  # Hydra configuration files
+├── data/                     # Local datasets and processed data
+├── dockerfiles/              # Dockerfiles for train/api/eval
+├── docs/                     # MkDocs documentation
+├── models/                   # Trained model artifacts
+├── notebooks/                # Notebooks
+├── reports/                  # Reports and figures
+├── runs/                     # Training and inference runs
 ├── src/                      # Source code
-│   ├── project_name/
-│   │   ├── __init__.py
-│   │   ├── api.py
-│   │   ├── data.py
-│   │   ├── evaluate.py
-│   │   ├── models.py
-│   │   ├── train.py
-│   │   └── visualize.py
-└── tests/                    # Tests
-│   ├── __init__.py
-│   ├── test_api.py
-│   ├── test_data.py
-│   └── test_model.py
-├── .gitignore
-├── .pre-commit-config.yaml
-├── LICENSE
-├── pyproject.toml            # Python project file
+│   └── ml_ops/
+│       ├── api.py            # FastAPI service
+│       ├── data.py           # Data utilities
+│       ├── eval_easyocr.py   # EasyOCR evaluation
+│       ├── evaluate.py       # Evaluation utilities
+│       ├── make_small_dataset.py
+│       ├── model.py          # Model components
+│       ├── profile.py        # Profiling
+│       ├── train.py          # Training CLI (Typer)
+│       └── visualize.py      # Visualization helpers
+├── tests/                    # Pytest suite
+├── data.dvc                  # DVC data pipeline entry
+├── pyproject.toml            # Python project metadata
 ├── README.md                 # Project README
-├── requirements.txt          # Project requirements
-├── requirements_dev.txt      # Development requirements
-└── tasks.py                  # Project tasks
+└── tasks.py                  # Invoke task definitions
 ```
 
 
@@ -72,7 +55,52 @@ Created using [mlops_template](https://github.com/SkafteNicki/mlops_template),
 a [cookiecutter template](https://github.com/cookiecutter/cookiecutter) for getting
 started with Machine Learning Operations (MLOps).
 
-## Configuration & Hydra usage
+## Setup
+
+This project uses `uv` for environment and dependency management.
+
+```bash
+uv venv
+uv pip install -e ".[dev]"
+```
+
+## Common commands
+
+List tasks:
+
+```bash
+uv run invoke --list
+```
+
+Train detector or OCR:
+
+```bash
+uv run invoke train-detector -- data/ccpd_tiny
+uv run invoke train-ocr -- data/ccpd_tiny
+```
+
+Run the API:
+
+```bash
+uv run invoke api
+```
+
+Run tests and linting:
+
+```bash
+uv run invoke test
+uv run invoke lint
+uv run invoke format
+```
+
+Build or serve documentation:
+
+```bash
+uv run invoke build-docs
+uv run invoke serve-docs
+```
+
+## Configuration and Hydra usage
 
 Training scripts use Hydra configs stored in `configs/`:
 
@@ -86,7 +114,7 @@ configs/
 ├── training/
 │   ├── detector/         # detector schedules (default, fast, ...)
 │   └── ocr/              # OCR schedules (default, quick, ...)
-└── wandb_configs/                # logging presets (default, disabled)
+└── wandb_configs/          # logging presets (default, disabled)
 ```
 
 ### Direct CLI overrides

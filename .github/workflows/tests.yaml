@@ -38,6 +38,9 @@ jobs:
       - name: Set GOOGLE_APPLICATION_CREDENTIALS
         run: echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-key.json" >> "$GITHUB_ENV"
 
+      - name: Set DVC remote credential path
+        run: echo "DVC_REMOTE_STORAGE_CREDENTIALPATH=$GOOGLE_APPLICATION_CREDENTIALS" >> "$GITHUB_ENV"
+
       - name: Cache uv and pip
         uses: actions/cache@v4
         with:

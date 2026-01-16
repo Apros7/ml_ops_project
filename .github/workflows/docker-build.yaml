@@ -1,0 +1,36 @@
+name: Docker Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "dockerfiles/**"
+      - "src/**"
+      - "configs/**"
+      - "pyproject.toml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "dockerfiles/**"
+      - "src/**"
+      - "configs/**"
+      - "pyproject.toml"
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Enable Docker BuildKit
+        run: echo "DOCKER_BUILDKIT=1" >> "$GITHUB_ENV"
+
+      - name: Build train image
+        run: docker build -t train:ci -f dockerfiles/train.dockerfile .
+
+      - name: Build api image
+        run: docker build -t api:ci -f dockerfiles/api.dockerfile .
+
+      - name: Build eval image
+        run: docker build -t eval:ci -f dockerfiles/eval.dockerfile .

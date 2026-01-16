@@ -1,6 +1,6 @@
 # ml_ops
 
-DTU ML Ops course project: license plate recognition.
+DTU ML Ops course project: License Plate Recognition.
 
 ## Project description
 

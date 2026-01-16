@@ -93,7 +93,7 @@ jobs:
       - name: Verify GCP key presence
         run: |
           ls -l "$GOOGLE_APPLICATION_CREDENTIALS"
-          python - <<'PY'
+          python -c "import json, os; path=os.environ['GOOGLE_APPLICATION_CREDENTIALS']; data=json.load(open(path)); print('client_email:', data.get('client_email')); print('project_id:', data.get('project_id')); print('type:', data.get('type'))"
 
       - name: dvc pull
         run: uv run dvc pull

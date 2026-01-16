@@ -29,12 +29,14 @@ jobs:
       REPOSITORY: license-plate-repo
       IMAGE_NAME: mlops-api
       SERVICE_NAME: license-plate-api
-      GOOGLE_APPLICATION_CREDENTIALS: ${{ env.RUNNER_TEMP }}/gcp-key.json
 
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set GOOGLE_APPLICATION_CREDENTIALS
+        run: echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-key.json" >> "$GITHUB_ENV"
 
       - name: Cache uv and pip
         uses: actions/cache@v4

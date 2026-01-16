@@ -84,11 +84,11 @@ jobs:
         run: |
           uv pip install "torch==${{ matrix.pytorch-version }}" --index-url https://download.pytorch.org/whl/cpu
 
-      # - name: Write GCP key
-      #   run: |
-      #     cat <<'EOF' > "$GOOGLE_APPLICATION_CREDENTIALS"
-      #     ${{ secrets.GCP_SA_KEY }}
-      #     EOF
+      - name: Write GCP key
+        run: |
+          cat <<'EOF' > "$GOOGLE_APPLICATION_CREDENTIALS"
+          ${{ secrets.GCP_SA_KEY }}
+          EOF
 
       - name: Configure DVC credential path
         run: |

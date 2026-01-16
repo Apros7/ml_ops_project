@@ -22,6 +22,7 @@ Available tasks:
         uv run invoke test                    # Run tests with coverage
         uv run invoke lint                    # Run linter (ruff)
         uv run invoke format                  # Format code (ruff)
+        uv run invoke pre-commit              # Run pre-commit hooks on all files
 
     Documentation:
         uv run invoke build-docs              # Build documentation
@@ -220,6 +221,13 @@ def lint_and_format(ctx: Context) -> None:
     """Run both linter and formatter."""
     lint(ctx)
     format(ctx)
+
+
+@task(name="pre-commit")
+def pre_commit_task(ctx: Context) -> None:
+    """Run pre-commit hooks on all files."""
+
+    ctx.run("uv run pre-commit run --all-files", echo=True, pty=not WINDOWS)
 
 
 # ============================================================================

@@ -25,6 +25,8 @@ jobs:
       REPOSITORY: license-plate-repo
       IMAGE_NAME: mlops-api
       SERVICE_NAME: license-plate-api
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gcp-key.json
+
 
     steps:
       - name: Checkout code
@@ -69,6 +71,12 @@ jobs:
           uv sync --locked --dev
           uv tree
 
+      - name: Write GCP key
+        run: |
+          cat <<'EOF' > "$GOOGLE_APPLICATION_CREDENTIALS"
+          ${{ secrets.GCP_SA_KEY }}
+          EOF
+
       - name: Authenticate to Google Cloud
         id: auth
         uses: google-github-actions/auth@v2
@@ -80,8 +88,7 @@ jobs:
           uv pip install "torch==${{ matrix.pytorch-version }}" --index-url https://download.pytorch.org/whl/cpu
 
       - name: dvc pull
-        run: 
-          uv run dvc pull
+        run: uv run dvc pull
 
       - name: Run tests & coverage
         run: |

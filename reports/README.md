@@ -265,7 +265,7 @@ We implemented 12 tests across model, data, api and training. For training we ar
 >
 > Answer:
 
-*We made use of both branches and PRs in our project. We included branch protection rules for our main branch. In our group, we had feature brances for different tasks, meaning that no member had their own branch, but would make a new called fx unit_testing, to implement unit tests. Then it would need to pass some tests and a merge control before merging would be possible. We could have added minimum 1 reviwer to merge the PR, but we thought it would be too much work for our group to revise each other. For larger projects it is a good idea to get at least 1 reviwer on PRs to avoid stupid mistakes and sole liability.*
+*We made use of both branches and PRs in our project. We included branch protection rules for our main branch. In our group, we had feature branches for different tasks, meaning that no member had their own branch, but would make a new called fx unit_testing, to implement unit tests. Then it would need to pass some tests and a merge control before merging would be possible. We could have added minimum 1 reviewer to merge the PR, but we thought it would be too much work for our group to review each other. For larger projects it is a good idea to get at least 1 reviewer on PRs to avoid stupid mistakes and sole liability.*
 
 ### Question 10
 

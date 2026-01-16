@@ -214,6 +214,8 @@ pre-commit install
 
 --- question 6 fill here ---
 
+We enforced code quality with Ruff for linting and formatting, and pre-commit hooks to keep the codebase consistent. For typing and documentation we have not used any strict guidelines. However, for larger projects, these concepts are important because they ensure easier maintainability and collaboration, thus efficiency. It ensures that cross team coworkers easily can read, understand and write code without introducing foreign errors.
+
 ## Version control
 
 > In the following section we are interested in how version control was used in your project during development to
@@ -232,6 +234,8 @@ pre-commit install
 > Answer:
 
 --- question 7 fill here ---
+
+We implemented 12 tests across model, data, api and training. For training we are merely testing if the configuration used is valid. For the model, we are testing the forward pass of the detector and OCR, to ensure correct output shapes. Similarly for the data, where we primarily test for proper input dimensions and labels. For the API, we test the endpoints for valid and invalid inputs.
 
 ### Question 8
 
@@ -261,7 +265,7 @@ pre-commit install
 >
 > Answer:
 
---- question 9 fill here ---
+*We made use of both branches and PRs in our project. We included branch protection rules for our main branch. In our group, we had feature branches for different tasks, meaning that no member had their own branch, but would make a new called fx unit_testing, to implement unit tests. Then it would need to pass some tests and a merge control before merging would be possible. We could have added minimum 1 reviewer to merge the PR, but we thought it would be too much work for our group to review each other. For larger projects it is a good idea to get at least 1 reviewer on PRs to avoid stupid mistakes and sole liability.*
 
 ### Question 10
 
@@ -277,6 +281,8 @@ pre-commit install
 > Answer:
 
 --- question 10 fill here ---
+
+Yes. We used DVC to version the dataset and it was stored in a bucket in remote storage using Google Cloud Storage. For this project it was not strictly necessary to use version control for the data, since it was static. However, for projects where a model should be checkpointed and retrained as new data arrives, it could be very useful, moreover, if it is important to know what data something is trained on, versioning is also beneficial, because then we could say that we know that this model did or did not know X, i.e. it enhances reproducibility.
 
 ### Question 11
 
@@ -294,6 +300,10 @@ pre-commit install
 > Answer:
 
 --- question 11 fill here ---
+
+We run several GitHub Actions workflows. Unit tests execute over three operating systems, two Python versions, and multiple PyTorch versions with caching for uv, pip, DVC artifacts, and model weights. We have separate workflows for linting (ruff check and format), pre-commit hooks, data-change validation (pulling DVC data and running data tests), model-registry checks, and Docker image builds. An example of a triggered workflow can be seen in the repo (.github/workflows/tests.yaml:), or in github: https://github.com/Apros7/ml_ops_project/actions/runs/21064304811
+
+
 
 ## Running code and tracking experiments
 

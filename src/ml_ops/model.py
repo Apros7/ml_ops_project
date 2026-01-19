@@ -696,6 +696,171 @@ class LicensePlateRecognizer:
         return recognitions
 
 
+class EasyOCRFineTunedRecognizer:
+    """Fine-tuned EasyOCR recognizer for license plate OCR.
+
+    This class loads a fine-tuned EasyOCR recognizer checkpoint saved by `ml_ops.train`
+    (see `models/ocr_best.pth`) and exposes a lightweight prediction interface.
+    """
+
+    def __init__(self, checkpoint_path: str | Path, device: str = "auto") -> None:
+        """Initialize the recognizer.
+
+        Args:
+            checkpoint_path: Path to the fine-tuned checkpoint produced by `train-ocr`.
+            device: Device to run inference on ('auto', 'cpu', 'cuda', etc.).
+        """
+        from easyocr.model.vgg_model import Model as EasyOCRVGGModel
+        from easyocr.utils import CTCLabelConverter
+
+        self.device = self._get_device(device)
+        self.checkpoint_path = str(checkpoint_path)
+
+        payload = torch.load(self.checkpoint_path, map_location="cpu", weights_only=False)
+        network_params = payload["network_params"]
+        characters = payload["characters"]
+
+        self.img_height = int(payload.get("img_height", 32))
+        self.img_width = int(payload.get("img_width", 200))
+        self.english_only = bool(payload.get("english_only", False))
+
+        self.converter = CTCLabelConverter(characters)
+        num_class = len(self.converter.character)
+
+        self.model = EasyOCRVGGModel(num_class=num_class, **network_params)
+        state_dict = payload["state_dict"]
+        cleaned_state_dict = {k.removeprefix("module."): v for k, v in state_dict.items()}
+        self.model.load_state_dict(cleaned_state_dict)
+        self.model = self.model.to(self.device)
+        self.model.eval()
+
+    def _get_device(self, device: str) -> torch.device:
+        """Get the appropriate device.
+
+        Args:
+            device: Device string ('auto', 'cpu', 'cuda', etc.).
+
+        Returns:
+            torch.device object.
+        """
+        if device == "auto":
+            return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        return torch.device(device)
+
+    def _preprocess(self, image_rgb: "object") -> torch.Tensor:
+        """Preprocess a plate crop into a normalized grayscale tensor."""
+        import cv2
+        import numpy as np
+
+        if not isinstance(image_rgb, np.ndarray):
+            raise TypeError("image_rgb must be a numpy.ndarray")
+
+        resized = cv2.resize(image_rgb, (self.img_width, self.img_height))
+        tensor = torch.from_numpy(resized).permute(2, 0, 1).float() / 255.0
+        r, g, b = tensor[0], tensor[1], tensor[2]
+        gray = 0.299 * r + 0.587 * g + 0.114 * b
+        gray = gray.unsqueeze(0).unsqueeze(0)
+        gray = (gray - 0.5) / 0.5
+        return gray.to(self.device)
+
+    def _ctc_decode(self, indices: torch.Tensor) -> list[str]:
+        """Greedy CTC decode (blank=0)."""
+        decoded: list[str] = []
+        for seq in indices.tolist():
+            chars: list[str] = []
+            prev = -1
+            for idx in seq:
+                if idx != 0 and idx != prev:
+                    chars.append(self.converter.character[idx])
+                prev = idx
+            decoded.append("".join(chars))
+        return decoded
+
+    def predict(self, image_rgb: "object") -> str:
+        """Predict plate text from an RGB plate crop.
+
+        Args:
+            image_rgb: RGB numpy array of the plate crop.
+
+        Returns:
+            Predicted plate text.
+        """
+        x = self._preprocess(image_rgb)
+        with torch.no_grad():
+            preds = self.model(x, torch.zeros(1, 1, dtype=torch.long, device=self.device))
+            preds_log_probs = preds.log_softmax(2)
+            pred_indices = preds_log_probs.argmax(2)
+            return self._ctc_decode(pred_indices)[0]
+
+
+class LicensePlateRecognizerEasyOCR:
+    """End-to-end license plate recognition using YOLO + fine-tuned EasyOCR recognizer."""
+
+    def __init__(
+        self,
+        detector_weights: str = "yolov8n.pt",
+        ocr_weights: str | None = None,
+        device: str = "auto",
+    ) -> None:
+        """Initialize the recognizer.
+
+        Args:
+            detector_weights: Path to YOLO detector weights.
+            ocr_weights: Path to fine-tuned EasyOCR weights (models/ocr_best.pth by default).
+            device: Device string for OCR inference.
+        """
+        self.detector = YOLO(detector_weights)
+
+        default_ocr = Path(__file__).parent.parent.parent / "models" / "ocr_best.pth"
+        weights_path = ocr_weights or str(default_ocr)
+        self.ocr = EasyOCRFineTunedRecognizer(weights_path, device=device)
+
+    def recognize(self, image_path: str, conf_threshold: float = 0.25) -> list[dict]:
+        """Recognize license plates in an image.
+
+        Args:
+            image_path: Path to the input image.
+            conf_threshold: Detection confidence threshold.
+
+        Returns:
+            List of recognized plates with bounding boxes and text.
+        """
+        import cv2
+
+        results = self.detector(image_path, conf=conf_threshold)
+
+        image = cv2.imread(image_path)
+        if image is None:
+            return []
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        recognitions = []
+        for result in results:
+            boxes = result.boxes
+            for box in boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+
+                x1 = max(0, x1)
+                y1 = max(0, y1)
+                x2 = min(image.shape[1], x2)
+                y2 = min(image.shape[0], y2)
+
+                plate_crop = image[y1:y2, x1:x2]
+                if plate_crop.size == 0:
+                    continue
+
+                plate_text = self.ocr.predict(plate_crop)
+                recognitions.append(
+                    {
+                        "bbox": [x1, y1, x2, y2],
+                        "confidence": box.conf[0].item(),
+                        "plate_text": plate_text,
+                    }
+                )
+
+        return recognitions
+
+
 if __name__ == "__main__":
     logger.debug("Testing CRNN model...")
     model = CRNN()

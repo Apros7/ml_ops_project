@@ -1,6 +1,6 @@
 batch_size: 32
 max_epochs: 5
-learning_rate: 0.0015
+learning_rate: 0.001
 project_dir: runs/ocr
 experiment_name: plate_ocr_quick
 patience: 2

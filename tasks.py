@@ -9,7 +9,8 @@ Usage:
 Available tasks:
     Training:
         uv run invoke train-detector          # Train YOLO license plate detector
-        uv run invoke train-ocr               # Train CRNN OCR model (English-only)
+        uv run invoke train-ocr               # Fine-tune EasyOCR recognizer (recommended)
+        uv run invoke train-crnn              # Train in-house CRNN OCR model (for comparison)
         uv run invoke train-both              # Train both detector and OCR
 
     Data:
@@ -96,7 +97,7 @@ def train_ocr(
     batch_size: int = 64,
     english_only: bool = True,
 ) -> None:
-    """Train the CRNN OCR model.
+    """Fine-tune the EasyOCR recognizer model.
 
     Args:
         data_dir: Path to CCPD dataset directory.
@@ -108,6 +109,33 @@ def train_ocr(
     english_flag = "--english-only" if english_only else "--no-english-only"
     cmd = (
         f"uv run python -m {PROJECT_NAME}.train train-ocr {data_dir} "
+        f"--max-images {max_images} --max-epochs {epochs} "
+        f"--batch-size {batch_size} {english_flag}"
+    )
+    ctx.run(cmd, echo=True, pty=not WINDOWS)
+
+
+@task
+def train_crnn(
+    ctx: Context,
+    data_dir: str = DEFAULT_DATA_DIR,
+    max_images: int = 5000,
+    epochs: int = 15,
+    batch_size: int = 64,
+    english_only: bool = True,
+) -> None:
+    """Train the in-house CRNN OCR model (Lightning).
+
+    Args:
+        data_dir: Path to CCPD dataset directory.
+        max_images: Maximum total images (80% train, 20% val).
+        epochs: Maximum number of epochs.
+        batch_size: Batch size.
+        english_only: Only predict English characters (recommended).
+    """
+    english_flag = "--english-only" if english_only else "--no-english-only"
+    cmd = (
+        f"uv run python -m {PROJECT_NAME}.train train-crnn {data_dir} "
         f"--max-images {max_images} --max-epochs {epochs} "
         f"--batch-size {batch_size} {english_flag}"
     )

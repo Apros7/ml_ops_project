@@ -33,6 +33,7 @@ Available tasks:
 
     API:
         uv run invoke api                     # Run the FastAPI service
+        uv run invoke frontend                # Run the Streamlit frontend
 """
 
 import os
@@ -85,6 +86,23 @@ def api(ctx: Context, host: str = "0.0.0.0", port: int = 8000) -> None:
 
     cmd = f"uv run uvicorn ml_ops.api:app --host {host} --port {port}"
     ctx.run(cmd, echo=True, pty=not WINDOWS)
+
+
+@task
+def frontend(ctx: Context, port: int = 8501, backend_url: str = "") -> None:
+    """Run the Streamlit frontend for license plate recognition.
+
+    Args:
+        port: Port to run Streamlit on.
+        backend_url: Backend API URL (defaults to localhost:8000).
+    """
+    env = os.environ.copy()
+    env["STREAMLIT_SERVER_PORT"] = str(port)
+    if backend_url:
+        env["BACKEND_URL"] = backend_url
+
+    cmd = "uv run streamlit run src/ml_ops/frontend.py --server.port {port}".format(port=port)
+    ctx.run(cmd, echo=True, pty=not WINDOWS, env=env)
 
 
 @task
@@ -199,6 +217,16 @@ def test(ctx: Context) -> None:
     ctx.run("uv run coverage report -m -i", echo=True, pty=not WINDOWS)
 
 
+@task(name="test-integration")
+def test_integration(ctx: Context) -> None:
+    """Run integration tests with coverage."""
+    ctx.run(
+        "uv run pytest tests/integrationtests/ -v --cov=src --cov-report=term-missing",
+        echo=True,
+        pty=not WINDOWS,
+    )
+
+
 @task
 def lint(ctx: Context, fix: bool = True) -> None:
     """Run ruff linter.
@@ -274,3 +302,36 @@ def build_docs(ctx: Context) -> None:
 def serve_docs(ctx: Context) -> None:
     """Serve documentation locally."""
     ctx.run("uv run mkdocs serve --config-file docs/mkdocs.yaml", echo=True, pty=not WINDOWS)
+
+
+# ============================================================================
+# Testing and Monitoring tasks
+# ============================================================================
+
+
+@task(name="load-test")
+def load_test(ctx: Context, host: str = "http://localhost:8000", users: int = 50, spawn_rate: int = 10, duration: str = "60s") -> None:
+    """Run Locust load test in headless mode.
+
+    Args:
+        host: API host URL.
+        users: Number of concurrent users.
+        spawn_rate: Users spawned per second.
+        duration: Test duration (e.g., 60s, 5m).
+    """
+    report_file = f"locust_report_{users}users_{duration}.html"
+    cmd = (
+        f"uv run locust -f tests/performancetests/locustfile.py "
+        f"--host {host} --headless -u {users} -r {spawn_rate} -t {duration} --html {report_file}"
+    )
+    ctx.run(cmd, echo=True, pty=not WINDOWS)
+
+
+@task(name="check-metrics")
+def check_metrics(ctx: Context, host: str = "http://localhost:8000") -> None:
+    """Check Prometheus metrics endpoint.
+
+    Args:
+        host: API host URL.
+    """
+    ctx.run(f"curl -s {host}/metrics | head -20", echo=True, pty=not WINDOWS, warn=True)

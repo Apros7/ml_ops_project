@@ -10,6 +10,7 @@ RUN apt-get update && \
         libsm6 \
         libxext6 \
         libxrender1 \
+        curl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -30,9 +31,18 @@ COPY LICENSE LICENSE
 # Install local package as well
 RUN uv sync --locked
 
+# Create logs directory
+RUN mkdir -p logs
+
+# Set log level
+ENV LOG_LEVEL=INFO
+
 # API listens on 8000 inside the container
 EXPOSE 8000
 
-# Start FastAPI app via uvicorn
-# Assumes you have `app = FastAPI(...)` in src/ml_ops/api.py
-ENTRYPOINT ["uv", "run", "uvicorn", "ml_ops.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Start FastAPI app via uvicorn with 2 workers
+CMD ["uv", "run", "uvicorn", "ml_ops.api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

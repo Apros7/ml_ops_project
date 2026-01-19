@@ -1,9 +1,9 @@
 batch_size: 64
-max_epochs: 15
+max_epochs: 25
 learning_rate: 0.001
 project_dir: runs/ocr
 experiment_name: plate_ocr
-patience: 5
+patience: 0  # Disable early stopping for the full default training run
 gradient_clip_val: 5.0
 precision: auto
 # Profiling options (set ENABLE_PROFILING=true environment variable to enable)

@@ -1,12 +1,15 @@
 """Training scripts for license plate detection and OCR."""
 
 import csv
+import shutil
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 import typer
 import torch
 import pytorch_lightning as pl
+from tqdm import tqdm
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 from pytorch_lightning.loggers import CSVLogger, WandbLogger
 import wandb
@@ -16,13 +19,22 @@ from omegaconf import DictConfig
 from loguru import logger
 
 from ml_ops.model import PlateDetector, PlateOCR
-from ml_ops.data import CCPDDataModule, export_yolo_format, ENGLISH_NUM_CLASSES, NUM_CLASSES
+from ml_ops.data import (
+    CCPDDataModule,
+    CCPDOCRDataset,
+    ENGLISH_CHARS,
+    PROVINCES,
+    export_yolo_format,
+    ENGLISH_NUM_CLASSES,
+    NUM_CLASSES,
+)
 
 app = typer.Typer()
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 RUNS_DIR = PROJECT_ROOT / "runs"
 CONFIGS_DIR = PROJECT_ROOT / "configs"
+MODELS_DIR = PROJECT_ROOT / "models"
 
 # Weights & Biases configuration
 WANDB_ENTITY = "ml_ops_number_plates"
@@ -100,6 +112,443 @@ def _log_yolo_results_to_wandb(results_file: Path) -> None:
 
             if payload:
                 wandb.log(payload, step=payload.get("epoch"))
+
+
+def _export_best_model(src: Path, dst: Path) -> None:
+    """Copy a trained model artifact into the project's models folder.
+
+    Args:
+        src: Source file path.
+        dst: Destination file path.
+    """
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(src, dst)
+    logger.info(f"Exported best model: {src} -> {dst}")
+
+
+def _build_easyocr_character_list(*, english_only: bool) -> str:
+    """Build an ordered EasyOCR character set for license plates.
+
+    Args:
+        english_only: If True, only include A-Z (no I/O) and digits.
+
+    Returns:
+        A string containing all characters in order.
+    """
+    if english_only:
+        return ENGLISH_CHARS
+
+    letters = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+    digits = "0123456789"
+    ordered = list(PROVINCES) + list(letters) + list(digits)
+    return "".join(dict.fromkeys(ordered))
+
+
+def _normalize_easyocr_plate_text(text: str, *, english_only: bool) -> str:
+    """Normalize plate text to match the EasyOCR character set.
+
+    Args:
+        text: Plate text from the dataset.
+        english_only: Whether the model is trained on the English part only.
+
+    Returns:
+        Normalized plate text.
+    """
+    normalized = text.replace(" ", "").upper()
+    if english_only:
+        return normalized.replace("I", "1").replace("O", "0").replace("L", "1").replace("|", "1")
+    return normalized
+
+
+def _easyocr_collate_fn(batch: list[dict[str, Any]], *, english_only: bool) -> dict[str, Any]:
+    """Collate function for EasyOCR fine-tuning.
+
+    Args:
+        batch: List of CCPDOCRDataset samples.
+        english_only: Whether the labels contain only the English part of the plate.
+
+    Returns:
+        Batch dictionary containing grayscale images and text labels.
+    """
+    images = torch.stack([item["image"] for item in batch])
+    texts = [_normalize_easyocr_plate_text(item["plate_text"], english_only=english_only) for item in batch]
+
+    r, g, b = images[:, 0], images[:, 1], images[:, 2]
+    gray = 0.299 * r + 0.587 * g + 0.114 * b
+    gray = gray.unsqueeze(1)
+    gray = (gray - 0.5) / 0.5
+
+    return {"images": gray, "texts": texts}
+
+
+def _ctc_greedy_decode(indices: torch.Tensor, *, idx_to_char: list[str]) -> list[str]:
+    """Greedy-decode CTC predictions.
+
+    Args:
+        indices: Tensor of shape (batch, seq_len) with argmax class indices.
+        idx_to_char: Index-to-character mapping where index 0 is blank.
+
+    Returns:
+        List of decoded strings.
+    """
+    decoded: list[str] = []
+    for seq in indices.tolist():
+        chars: list[str] = []
+        prev = -1
+        for idx in seq:
+            if idx != 0 and idx != prev:
+                chars.append(idx_to_char[idx])
+            prev = idx
+        decoded.append("".join(chars))
+    return decoded
+
+
+def _calculate_char_accuracy(pred: str, gt: str) -> float:
+    """Calculate character-level accuracy between prediction and ground truth."""
+    if len(gt) == 0:
+        return 1.0 if len(pred) == 0 else 0.0
+    correct = sum(1 for p, g in zip(pred, gt) if p == g)
+    return correct / max(len(pred), len(gt))
+
+
+def _train_easyocr_with_cfg(
+    cfg: DictConfig,
+    *,
+    data_dir: Path | None = None,
+    split_dir: Path | None = None,
+    batch_size: int | None = None,
+    max_epochs: int | None = None,
+    learning_rate: float | None = None,
+    hidden_size: int | None = None,
+    img_height: int | None = None,
+    img_width: int | None = None,
+    max_images: int | None = None,
+    num_workers: int | None = None,
+    project: Path | None = None,
+    name: str | None = None,
+    english_only: bool | None = None,
+) -> tuple[Path, str]:
+    """Fine-tune an EasyOCR recognizer model on CCPD crops.
+
+    Args:
+        cfg: Hydra config.
+        data_dir: Path to CCPD dataset directory.
+        split_dir: Optional directory with train/val split files.
+        batch_size: Batch size.
+        max_epochs: Maximum epochs.
+        learning_rate: Learning rate.
+        hidden_size: LSTM hidden size for the EasyOCR recognizer.
+        img_height: OCR image height.
+        img_width: OCR image width.
+        max_images: Maximum total images (train/val split controlled via config).
+        num_workers: DataLoader workers.
+        project: Output directory for logs/checkpoints.
+        name: Experiment name.
+        english_only: If True, train on the English part only (6 chars).
+
+    Returns:
+        Tuple of (project_path, experiment_name).
+    """
+    from torch.utils.data import DataLoader
+    from easyocr.model.vgg_model import Model as EasyOCRVGGModel
+    from easyocr.utils import CTCLabelConverter
+
+    data_cfg = cfg.data
+    training_cfg = cfg.training.ocr
+    model_cfg = cfg.model.ocr
+    wandb_cfg = cfg.wandb_configs
+
+    resolved_data_dir = _normalize_path(data_dir) or _normalize_path(data_cfg.get("data_dir")) or PROJECT_ROOT / "data"
+    resolved_split_dir = _normalize_path(split_dir) or _normalize_path(data_cfg.get("split_dir"))
+    project_path = _normalize_path(project) or _normalize_path(training_cfg.get("project_dir")) or RUNS_DIR / "easyocr"
+    experiment_name = name or training_cfg.get("experiment_name", "easyocr_ocr")
+
+    batch_size_value = batch_size or training_cfg.get("batch_size", 64)
+    max_epochs_value = max_epochs or training_cfg.get("max_epochs", 15)
+    learning_rate_value = learning_rate or training_cfg.get("learning_rate", 1e-3)
+    num_workers_value = num_workers or data_cfg.get("num_workers", 4)
+
+    english_only_value = english_only if english_only is not None else model_cfg.get("english_only", True)
+    img_height_value = img_height or model_cfg.get("img_height", 32)
+    img_width_value = img_width or model_cfg.get("img_width", 200)
+    hidden_size_value = hidden_size or model_cfg.get("hidden_size", 256)
+    output_channel_value = int(model_cfg.get("output_channel", 256))
+
+    max_images_value = max_images or data_cfg.get("max_total_images")
+    if max_images_value is None:
+        raise ValueError(
+            "Missing value for max_images. Set it either via the CLI argument "
+            "'--max-images' or by specifying 'data.max_total_images' in the Hydra configuration."
+        )
+
+    train_split = float(data_cfg.get("train_split", 0.8))
+    max_train_images = int(max_images_value * train_split)
+    max_val_images = max_images_value - max_train_images
+
+    logger.info(f"Max images: {max_images_value} -> {max_train_images} train, {max_val_images} val")
+    logger.info(f"EasyOCR Mode: {'English-only (6 chars)' if english_only_value else 'Full (7 chars with Chinese)'}")
+
+    project_path.mkdir(parents=True, exist_ok=True)
+    experiment_dir = project_path / experiment_name
+    experiment_dir.mkdir(parents=True, exist_ok=True)
+
+    train_dir = resolved_data_dir / "train" if (resolved_data_dir / "train").exists() else resolved_data_dir
+    val_dir = resolved_data_dir / "val" if (resolved_data_dir / "val").exists() else resolved_data_dir
+
+    train_split_file = resolved_split_dir / "train.txt" if resolved_split_dir else None
+    val_split_file = resolved_split_dir / "val.txt" if resolved_split_dir else None
+
+    train_dataset = CCPDOCRDataset(
+        train_dir,
+        split_file=train_split_file,
+        img_height=img_height_value,
+        img_width=img_width_value,
+        max_images=max_train_images,
+        english_only=english_only_value,
+    )
+    val_dataset = CCPDOCRDataset(
+        val_dir,
+        split_file=val_split_file,
+        img_height=img_height_value,
+        img_width=img_width_value,
+        max_images=max_val_images,
+        english_only=english_only_value,
+    )
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size_value,
+        shuffle=True,
+        num_workers=num_workers_value,
+        pin_memory=True,
+        collate_fn=partial(_easyocr_collate_fn, english_only=english_only_value),
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size_value,
+        shuffle=False,
+        num_workers=num_workers_value,
+        pin_memory=True,
+        collate_fn=partial(_easyocr_collate_fn, english_only=english_only_value),
+    )
+
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        logger.info(f"Using CUDA for EasyOCR fine-tuning: {torch.cuda.get_device_name(0)}")
+    elif torch.backends.mps.is_available():
+        device = torch.device("cpu")
+        logger.warning("MPS is available, but CTCLoss is not supported on MPS. Using CPU for EasyOCR fine-tuning.")
+    else:
+        device = torch.device("cpu")
+        logger.info("Using CPU for EasyOCR fine-tuning.")
+
+    character_list = _build_easyocr_character_list(english_only=english_only_value)
+    converter = CTCLabelConverter(character_list)
+    num_class = len(converter.character)
+
+    model = EasyOCRVGGModel(
+        input_channel=1,
+        output_channel=output_channel_value,
+        hidden_size=hidden_size_value,
+        num_class=num_class,
+    ).to(device)
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate_value, weight_decay=1e-4)
+    criterion = torch.nn.CTCLoss(blank=0, zero_infinity=True)
+
+    wandb_active = _start_wandb_run(
+        wandb_cfg,
+        name=f"easyocr-{experiment_name}",
+        metadata={
+            "architecture": "EasyOCR-VGG",
+            "task": "OCR",
+            "english_only": english_only_value,
+            "img_height": img_height_value,
+            "img_width": img_width_value,
+            "hidden_size": hidden_size_value,
+            "output_channel": output_channel_value,
+            "learning_rate": learning_rate_value,
+            "batch_size": batch_size_value,
+            "max_epochs": max_epochs_value,
+            "max_train_images": max_train_images,
+            "max_val_images": max_val_images,
+            "dataset": data_cfg.get("name", "CCPD"),
+        },
+    )
+
+    best_val_exact = -1.0
+    epochs_no_improve = 0
+    patience_cfg = training_cfg.get("patience", 5)
+    patience = int(patience_cfg) if patience_cfg is not None else 0
+    early_stopping_enabled = patience > 0
+    grad_clip = float(training_cfg.get("gradient_clip_val", 5.0))
+
+    best_local_path = experiment_dir / "ocr_best.pth"
+
+    if not early_stopping_enabled:
+        logger.info("Early stopping disabled for OCR training (patience <= 0).")
+
+    for epoch in range(max_epochs_value):
+        model.train()
+        train_loss_sum = 0.0
+        train_batches = 0
+
+        train_bar = tqdm(
+            train_loader,
+            desc=f"Epoch {epoch + 1}/{max_epochs_value} [train]",
+            unit="batch",
+            leave=False,
+        )
+        for batch in train_bar:
+            images = batch["images"].to(device, non_blocking=(device.type == "cuda"))
+            texts = batch["texts"]
+            batch_size_actual = images.size(0)
+
+            max_len = max(len(t) for t in texts) if texts else 0
+            text_for_pred = torch.zeros(batch_size_actual, max_len + 1, dtype=torch.long, device=device)
+
+            preds = model(images, text_for_pred)
+            preds_log_probs = preds.log_softmax(2)
+            preds_for_ctc = preds_log_probs.permute(1, 0, 2)
+
+            input_lengths = torch.full(
+                (batch_size_actual,),
+                preds_for_ctc.size(0),
+                dtype=torch.long,
+                device=device,
+            )
+            targets, target_lengths = converter.encode(texts)
+            targets = targets.to(device)
+            target_lengths = target_lengths.to(device)
+
+            loss = criterion(preds_for_ctc, targets, input_lengths, target_lengths)
+
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+            optimizer.step()
+
+            loss_value = float(loss.item())
+            train_loss_sum += loss_value
+            train_batches += 1
+            train_bar.set_postfix(loss=loss_value, avg=train_loss_sum / train_batches)
+
+        train_loss = train_loss_sum / max(train_batches, 1)
+
+        model.eval()
+        val_loss_sum = 0.0
+        val_batches = 0
+        total = 0
+        exact = 0
+        char_acc_sum = 0.0
+
+        with torch.no_grad():
+            val_bar = tqdm(
+                val_loader,
+                desc=f"Epoch {epoch + 1}/{max_epochs_value} [val]",
+                unit="batch",
+                leave=False,
+            )
+            for batch in val_bar:
+                images = batch["images"].to(device, non_blocking=(device.type == "cuda"))
+                texts = batch["texts"]
+                batch_size_actual = images.size(0)
+
+                max_len = max(len(t) for t in texts) if texts else 0
+                text_for_pred = torch.zeros(batch_size_actual, max_len + 1, dtype=torch.long, device=device)
+
+                preds = model(images, text_for_pred)
+                preds_log_probs = preds.log_softmax(2)
+                preds_for_ctc = preds_log_probs.permute(1, 0, 2)
+
+                input_lengths = torch.full(
+                    (batch_size_actual,),
+                    preds_for_ctc.size(0),
+                    dtype=torch.long,
+                    device=device,
+                )
+                targets, target_lengths = converter.encode(texts)
+                targets = targets.to(device)
+                target_lengths = target_lengths.to(device)
+
+                loss = criterion(preds_for_ctc, targets, input_lengths, target_lengths)
+                loss_value = float(loss.item())
+                val_loss_sum += loss_value
+                val_batches += 1
+
+                pred_indices = preds_log_probs.argmax(2)
+                decoded = _ctc_greedy_decode(pred_indices, idx_to_char=converter.character)
+
+                for pred, gt in zip(decoded, texts):
+                    total += 1
+                    if pred == gt:
+                        exact += 1
+                    char_acc_sum += _calculate_char_accuracy(pred, gt)
+                val_bar.set_postfix(
+                    loss=loss_value,
+                    avg=val_loss_sum / val_batches,
+                    exact=(exact / total) if total else 0.0,
+                )
+
+        val_loss = val_loss_sum / max(val_batches, 1)
+        val_exact = exact / total if total > 0 else 0.0
+        val_char = char_acc_sum / total if total > 0 else 0.0
+
+        logger.info(
+            f"Epoch {epoch+1}/{max_epochs_value} | "
+            f"train_loss={train_loss:.4f} | val_loss={val_loss:.4f} | "
+            f"val_exact={val_exact:.4f} | val_char={val_char:.4f}"
+        )
+
+        if wandb_active:
+            wandb.log(
+                {
+                    "epoch": epoch + 1,
+                    "train_loss": train_loss,
+                    "val_loss": val_loss,
+                    "val_exact_accuracy": val_exact,
+                    "val_char_accuracy": val_char,
+                },
+                step=epoch + 1,
+            )
+
+        if val_exact > best_val_exact:
+            best_val_exact = val_exact
+            epochs_no_improve = 0
+
+            state_dict = {f"module.{k}": v.detach().cpu() for k, v in model.state_dict().items()}
+            payload = {
+                "state_dict": state_dict,
+                "network_params": {
+                    "input_channel": 1,
+                    "output_channel": output_channel_value,
+                    "hidden_size": hidden_size_value,
+                },
+                "characters": character_list,
+                "img_height": img_height_value,
+                "img_width": img_width_value,
+                "english_only": english_only_value,
+            }
+            torch.save(payload, best_local_path)
+            logger.info(f"New best EasyOCR checkpoint saved: {best_local_path} (val_exact={best_val_exact:.4f})")
+        else:
+            epochs_no_improve += 1
+            if early_stopping_enabled and epochs_no_improve >= patience:
+                logger.info(f"Early stopping triggered (patience={patience}). Best val_exact={best_val_exact:.4f}")
+                break
+
+    _finish_wandb_run(wandb_active)
+
+    if best_local_path.exists():
+        _export_best_model(best_local_path, MODELS_DIR / "ocr_best.pth")
+    else:
+        logger.warning("No EasyOCR best checkpoint found to export.")
+
+    logger.info(f"\nTraining complete! Results saved to {experiment_dir}")
+    logger.info(f"  - Best OCR weights: {MODELS_DIR / 'ocr_best.pth'}")
+
+    return project_path, experiment_name
 
 
 def get_accelerator(force_cpu: bool = False) -> tuple[str, str]:
@@ -269,6 +718,12 @@ names:
         project = wandb_cfg.get("project", WANDB_PROJECT)
         logger.info(f"  - W&B Dashboard: https://wandb.ai/{entity}/{project}")
 
+    best_weights = project_path / experiment_name / "weights" / "best.pt"
+    if best_weights.exists():
+        _export_best_model(best_weights, MODELS_DIR / "yolo_best.pt")
+    else:
+        logger.warning(f"Could not export best YOLO weights; file not found: {best_weights}")
+
     return project_path, experiment_name
 
 
@@ -368,7 +823,7 @@ def _train_ocr_with_cfg(
     )
 
     checkpoint_dir = project_path / experiment_name / "checkpoints"
-    callbacks = [
+    callbacks: list[Any] = [
         ModelCheckpoint(
             dirpath=str(checkpoint_dir),
             filename="ocr-{epoch:02d}-{val_accuracy:.4f}",
@@ -377,14 +832,21 @@ def _train_ocr_with_cfg(
             save_top_k=3,
             save_last=True,
         ),
-        EarlyStopping(
-            monitor="val_accuracy",
-            patience=training_cfg.get("patience", 5),
-            mode="max",
-            verbose=True,
-        ),
         LearningRateMonitor(logging_interval="step"),
     ]
+    patience_cfg = training_cfg.get("patience", 5)
+    patience = int(patience_cfg) if patience_cfg is not None else 0
+    if patience > 0:
+        callbacks.append(
+            EarlyStopping(
+                monitor="val_accuracy",
+                patience=patience,
+                mode="max",
+                verbose=True,
+            )
+        )
+    else:
+        logger.info("Early stopping disabled for CRNN OCR training (patience <= 0).")
 
     csv_logger = CSVLogger(save_dir=str(project_path), name=experiment_name)
 
@@ -523,8 +985,57 @@ def train_ocr(
         help="Hydra override strings (key=value). Repeat the flag for multiple overrides.",
     ),
 ) -> None:
-    """Train the license plate OCR model using PyTorch Lightning and Hydra configs."""
+    """Fine-tune an EasyOCR recognizer on CCPD crops using Hydra configs."""
 
+    cfg = load_hydra_config(config_path=config_path, config_name=config_name, overrides=overrides)
+    _train_easyocr_with_cfg(
+        cfg,
+        data_dir=data_dir,
+        split_dir=split_dir,
+        batch_size=batch_size,
+        max_epochs=max_epochs,
+        learning_rate=learning_rate,
+        hidden_size=hidden_size,
+        img_height=img_height,
+        img_width=img_width,
+        max_images=max_images,
+        num_workers=num_workers,
+        project=project,
+        name=name,
+        english_only=english_only,
+    )
+
+
+@app.command()
+def train_crnn(
+    data_dir: Path | None = typer.Argument(None, help="Path to CCPD dataset directory"),
+    split_dir: Path | None = typer.Option(None, help="Directory containing train/val/test split files"),
+    batch_size: int | None = typer.Option(None, help="Batch size"),
+    max_epochs: int | None = typer.Option(None, help="Maximum number of epochs"),
+    learning_rate: float | None = typer.Option(None, help="Learning rate"),
+    hidden_size: int | None = typer.Option(None, help="LSTM hidden size"),
+    num_layers: int | None = typer.Option(None, help="Number of LSTM layers"),
+    img_height: int | None = typer.Option(None, help="Input image height (32 required for model architecture)"),
+    img_width: int | None = typer.Option(None, help="Input image width (larger = better quality, more compute)"),
+    max_images: int | None = typer.Option(None, help="Maximum total images (train/val split controlled via config)"),
+    num_workers: int | None = typer.Option(None, help="Number of dataloader workers"),
+    project: Path | None = typer.Option(None, help="Project directory for saving results"),
+    name: str | None = typer.Option(None, help="Experiment name"),
+    english_only: bool | None = typer.Option(None, help="Only predict English chars (no Chinese province)"),
+    config_name: str = typer.Option("config", "--config-name", help="Hydra config name to load."),
+    config_path: Path = typer.Option(CONFIGS_DIR, "--config-path", help="Directory that stores Hydra configs."),
+    overrides: list[str] | None = typer.Option(
+        None,
+        "--override",
+        "-o",
+        help="Hydra override strings (key=value). Repeat the flag for multiple overrides.",
+    ),
+) -> None:
+    """Train the in-house CRNN OCR model (Lightning) using Hydra configs.
+
+    This command is kept for comparison and for unit tests; the default `train-ocr`
+    command fine-tunes an EasyOCR recognizer.
+    """
     cfg = load_hydra_config(config_path=config_path, config_name=config_name, overrides=overrides)
     _train_ocr_with_cfg(
         cfg,
@@ -592,7 +1103,7 @@ def train_both(
     logger.info("PHASE 2: Training License Plate OCR")
     logger.info("=" * 50)
 
-    ocr_project, ocr_name = _train_ocr_with_cfg(
+    ocr_project, ocr_name = _train_easyocr_with_cfg(
         cfg,
         data_dir=data_dir,
         split_dir=split_dir,

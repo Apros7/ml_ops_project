@@ -84,22 +84,27 @@ def get_recognizer():
     """Get or initialize the recognizer."""
     global recognizer
     if recognizer is None:
-        from ml_ops.model import LicensePlateRecognizer
+        from ml_ops.model import LicensePlateRecognizer, LicensePlateRecognizerEasyOCR
 
-        detector_weights = Path("models/detector/best.pt")
-        ocr_checkpoint = Path("models/ocr/last.ckpt")
+        yolo_best = Path("models/yolo_best.pt")
+        ocr_best = Path("models/ocr_best.pth")
+        legacy_detector = Path("models/detector/best.pt")
+        legacy_ocr_ckpt = Path("models/ocr/last.ckpt")
 
-        if not detector_weights.exists():
-            detector_weights = "yolov8n.pt"
+        if yolo_best.exists():
+            detector_weights: str = str(yolo_best)
+        elif legacy_detector.exists():
+            detector_weights = str(legacy_detector)
         else:
-            detector_weights = str(detector_weights)
+            detector_weights = "yolov8n.pt"
 
-        ocr_ckpt = str(ocr_checkpoint) if ocr_checkpoint.exists() else None
-
-        recognizer = LicensePlateRecognizer(
-            detector_weights=detector_weights,
-            ocr_checkpoint=ocr_ckpt,
-        )
+        if ocr_best.exists():
+            recognizer = LicensePlateRecognizerEasyOCR(
+                detector_weights=detector_weights, ocr_weights=str(ocr_best), device="auto"
+            )
+        else:
+            ocr_ckpt = str(legacy_ocr_ckpt) if legacy_ocr_ckpt.exists() else None
+            recognizer = LicensePlateRecognizer(detector_weights=detector_weights, ocr_checkpoint=ocr_ckpt)
     return recognizer
 
 

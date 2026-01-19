@@ -14,7 +14,10 @@ from ml_ops.data import parse_ccpd_filename, PROVINCES
 
 app = typer.Typer()
 
-RUNS_DIR = Path(__file__).parent.parent.parent / "runs"
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+RUNS_DIR = PROJECT_ROOT / "runs"
+MODELS_DIR = PROJECT_ROOT / "models"
+DEFAULT_OCR_BEST = MODELS_DIR / "ocr_best.pth"
 
 # Valid characters for Chinese license plates
 PLATE_ALLOWLIST = "".join(PROVINCES[:-1])  # Province characters (exclude 'O' placeholder)
@@ -95,6 +98,8 @@ def evaluate(
     max_images: int = typer.Option(100, help="Maximum number of images to evaluate"),
     output_dir: Path = typer.Option(None, help="Output directory for results"),
     use_full_image: bool = typer.Option(False, help="Use full image instead of cropped plate"),
+    use_finetuned: bool = typer.Option(True, help="Use fine-tuned model from models/ocr_best.pth when available"),
+    finetuned_weights: Path | None = typer.Option(None, help="Override path to fine-tuned weights"),
 ) -> None:
     """Evaluate EasyOCR on CCPD license plate images using high-resolution crops.
 
@@ -107,8 +112,16 @@ def evaluate(
         output_dir = RUNS_DIR / "easyocr"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Initializing EasyOCR (this may take a moment to download models)...")
-    reader = easyocr.Reader(["ch_sim", "en"], gpu=False)
+    finetuned_path = finetuned_weights or DEFAULT_OCR_BEST
+    finetuned_ocr = None
+    if use_finetuned and finetuned_path.exists():
+        from ml_ops.model import EasyOCRFineTunedRecognizer
+
+        logger.info(f"Using fine-tuned OCR weights: {finetuned_path}")
+        finetuned_ocr = EasyOCRFineTunedRecognizer(finetuned_path, device="auto")
+    else:
+        logger.info("Initializing EasyOCR baseline (this may take a moment to download models)...")
+        reader = easyocr.Reader(["ch_sim", "en"], gpu=False)
 
     logger.info(f"Loading images from {data_dir}...")
     image_paths = []
@@ -159,37 +172,43 @@ def evaluate(
         if not use_full_image:
             ocr_input = preprocess_plate_image(ocr_input)
 
-        # Use optimized parameters for license plate OCR
-        ocr_results = reader.readtext(
-            ocr_input,
-            allowlist=PLATE_ALLOWLIST,
-            detail=1,
-            paragraph=False,
-            min_size=10,
-            text_threshold=0.5,
-            low_text=0.3,
-            mag_ratio=2.0,  # Magnify small images
-        )
+        if finetuned_ocr is not None:
+            ocr_input_rgb = cv2.cvtColor(ocr_input, cv2.COLOR_BGR2RGB)
+            pred_text = finetuned_ocr.predict(ocr_input_rgb).replace(" ", "").upper()
+            all_texts = [pred_text] if pred_text else []
+            gt_eval = gt_text[1:7] if finetuned_ocr.english_only and len(gt_text) >= 7 else gt_text
+        else:
+            gt_eval = gt_text
+            ocr_results = reader.readtext(
+                ocr_input,
+                allowlist=PLATE_ALLOWLIST,
+                detail=1,
+                paragraph=False,
+                min_size=10,
+                text_threshold=0.5,
+                low_text=0.3,
+                mag_ratio=2.0,
+            )
 
-        all_texts = []
-        if ocr_results:
-            for r in ocr_results:
-                text = r[1].replace(" ", "").upper()
-                all_texts.append(text)
+            all_texts = []
+            if ocr_results:
+                for r in ocr_results:
+                    text = r[1].replace(" ", "").upper()
+                    all_texts.append(text)
 
-        pred_text = "".join(all_texts) if all_texts else ""
+            pred_text = "".join(all_texts) if all_texts else ""
 
-        exact_match = pred_text == gt_text
-        partial_match = gt_text in pred_text or any(gt_text in t for t in all_texts)
+        exact_match = pred_text == gt_eval
+        partial_match = gt_eval in pred_text or any(gt_eval in t for t in all_texts)
 
-        chars_correct = sum(1 for a, b in zip(pred_text, gt_text) if a == b)
-        char_accuracy = chars_correct / len(gt_text) if gt_text else 0
+        chars_correct = sum(1 for a, b in zip(pred_text, gt_eval) if a == b)
+        char_accuracy = chars_correct / len(gt_eval) if gt_eval else 0
 
         results.append(
             {
                 "image_path": img_path,
                 "display_image": display_image,
-                "gt_text": gt_text,
+                "gt_text": gt_eval,
                 "pred_text": pred_text,
                 "all_texts": all_texts,
                 "exact_match": exact_match,

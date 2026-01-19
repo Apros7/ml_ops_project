@@ -3,4 +3,4 @@ outs:
   size: 15080258
   nfiles: 1
   hash: md5
-  path: models
+  path: best_models123

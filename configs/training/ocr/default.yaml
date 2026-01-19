@@ -1,5 +1,5 @@
-batch_size: 64
-max_epochs: 25
+batch_size: 128
+max_epochs: 50
 learning_rate: 0.001
 project_dir: runs/ocr
 experiment_name: plate_ocr

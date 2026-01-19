@@ -1,5 +1,5 @@
 [core]
-    remote = model_checkpoints
+    remote = storage
 ['remote "storage"']
     url = gs://ccpd_base
     credentialpath = ../mlops-license-plate-484109-c1ac634a105d.json

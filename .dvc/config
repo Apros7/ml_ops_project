@@ -1,5 +1,9 @@
 [core]
     remote = storage
+    autostage = true
 ['remote "storage"']
     url = gs://ccpd_base
+    credentialpath = ../mlops-license-plate-484109-c1ac634a105d.json
+['remote "model_checkpoints"']
+    url = gs://best_models123
     credentialpath = ../mlops-license-plate-484109-c1ac634a105d.json

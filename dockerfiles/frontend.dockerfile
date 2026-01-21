@@ -11,30 +11,22 @@ RUN apt-get update && \
         libxrender1 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Work directory
 WORKDIR /app
 
-# Copy dependency files first
 COPY pyproject.toml uv.lock ./
-
-# Install Python dependencies from uv.lock
 ENV UV_LINK_MODE=copy
 RUN uv sync --locked --no-install-project
 
-# Copy source code
 COPY src src/
+COPY configs configs/
 COPY README.md README.md
 COPY LICENSE LICENSE
-COPY configs configs/
-COPY .github .github/
-COPY .git .git/
-COPY .dvc .dvc/
-COPY data.dvc data.dvc
-COPY data/ccpd_base/ccpd_tiny data/ccpd_base/ccpd_tiny
 
-
-# Final dependency sync including local package
 RUN uv sync --locked
 
-# Default entrypoint = training script
-ENTRYPOINT ["uv", "run", "-m", "ml_ops.train"]
+ENV PORT=8501
+EXPOSE ${PORT}
+
+ENV BACKEND_URL=http://localhost:8080
+
+CMD ["sh", "-c", "uv run streamlit run src/ml_ops/frontend.py --server.port ${PORT} --server.address 0.0.0.0"]

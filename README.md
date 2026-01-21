@@ -2,6 +2,8 @@
 
 DTU ML Ops course project: License Plate Recognition.
 
+Docs at: apros7.github.io/ml_ops_project
+
 ## Project description
 
 This repository trains and serves a two-stage pipeline:

@@ -46,6 +46,7 @@ import io
 import logging
 import os
 import time
+from pathlib import Path
 from typing import Any
 
 import cv2
@@ -398,16 +399,73 @@ def main() -> None:
                 """
             )
 
+    st.markdown("### 📸 Sample Images")
+    sample_images_dir = Path("assets/sample_images")
+    sample_image_selected = None
+    sample_image_bytes = None
+    sample_image_name = None
+    
+    if sample_images_dir.exists():
+        sample_images = sorted(list(sample_images_dir.glob("*.jpg")) + list(sample_images_dir.glob("*.jpeg")) + list(sample_images_dir.glob("*.png")))
+        if sample_images:
+            cols = st.columns(min(4, len(sample_images)))
+            for idx, img_path in enumerate(sample_images):
+                with cols[idx % 4]:
+                    try:
+                        img_preview = Image.open(img_path)
+                        st.image(img_preview, use_container_width=True, caption=img_path.stem)
+                        is_selected = st.session_state.get("selected_sample") == img_path.name
+                        button_type = "primary" if is_selected else "secondary"
+                        if st.button(f"Use {img_path.stem}", key=f"sample_{idx}", use_container_width=True, type=button_type):
+                            sample_image_selected = img_path
+                            with open(img_path, "rb") as f:
+                                sample_image_bytes = f.read()
+                            sample_image_name = img_path.name
+                            st.session_state.selected_sample = img_path.name
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Error loading {img_path.name}: {e}")
+            
+            if st.session_state.get("selected_sample"):
+                selected_path = sample_images_dir / st.session_state.selected_sample
+                if selected_path.exists():
+                    sample_image_selected = selected_path
+                    with open(selected_path, "rb") as f:
+                        sample_image_bytes = f.read()
+                    sample_image_name = selected_path.name
+        else:
+            st.info("No sample images found in assets/sample_images/")
+    else:
+        st.info("Sample images directory not found. Add images to assets/sample_images/ to enable this feature.")
+    
+    st.markdown("---")
+    st.markdown("### 📤 Or Upload Your Own Image")
+    
     uploaded_file = st.file_uploader(
         "Upload Image",
         type=["jpg", "jpeg", "png"],
         help="Upload an image file containing license plates",
     )
+    
+    if uploaded_file is not None and st.session_state.get("selected_sample"):
+        st.session_state.selected_sample = None
 
-    if uploaded_file is not None:
+    if sample_image_selected is not None:
+        image_bytes = sample_image_bytes
+        image = Image.open(io.BytesIO(image_bytes))
+        image_source = "sample"
+        image_display_name = sample_image_name
+    elif uploaded_file is not None:
         uploaded_file.seek(0)
         image_bytes = uploaded_file.read()
         image = Image.open(io.BytesIO(image_bytes))
+        image_source = "uploaded"
+        image_display_name = uploaded_file.name
+    else:
+        image_bytes = None
+        image = None
+
+    if image_bytes is not None and image is not None:
 
         col1, col2 = st.columns(2)
         with col1:
@@ -498,7 +556,7 @@ def main() -> None:
                             st.download_button(
                                 label="📥 Download Annotated Image",
                                 data=img_buffer,
-                                file_name=f"annotated_{uploaded_file.name}",
+                                file_name=f"annotated_{image_display_name}",
                                 mime="image/png",
                             )
 

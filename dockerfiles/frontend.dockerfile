@@ -27,6 +27,9 @@ COPY configs configs/
 COPY README.md README.md
 COPY LICENSE LICENSE
 
+# Copy sample images for frontend
+COPY assets assets/
+
 # Install local package as well
 RUN uv sync --locked
 

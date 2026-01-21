@@ -252,8 +252,6 @@ pre-commit install
 
 *[This image](figures/test-coverage.png) shows the coverage across the src files. It spans from 7-100% depending on, how much of the code we could test and made sense to test. Obviously, you could always go for a higher amount of coverage and more testing scenarios, which is always a trade-off. We made a rather small amount of tests in the beginning to test simple model passes, data types and various assumptions, and then added regression tests as we found bugs and improved our model. Just because coverage is high (the lines are being hit in a test), errors should for sure still happen. Having some tests for all your code is probably good, but only if they test actual scenarios and not redundant scenarios.*
 
---- question 8 fill here ---
-
 ### Question 9
 
 > **Did you workflow include using branches and pull requests? If yes, explain how. If not, explain how branches and**
@@ -377,7 +375,16 @@ The second image shows the tracking of our detection run
 >
 > Answer:
 
---- question 15 fill here ---
+We used Docker to standardize training, to evaluate the API and the frontend such that experiments could run identically across laptops, CI, and GCP. Each stage has its own image built from the Dockerfiles in dockerfiles/ to pin Python, CUDA, and system dependencies. Locally we built and ran the training image for reproducible runs with Hydra overrides and mounted datasets, and we ran the API image to validate inference and integration tests.
+
+Example training run: uv run invoke train-release
+
+Example API: uv run invoke api-release
+
+This will build, tag, push and run the images.
+
+One of the Dockerfiles is here: [dockerfiles/train.dockerfile](dockerfiles/train.dockerfile).
+
 
 ### Question 16
 
@@ -392,7 +399,7 @@ The second image shows the tracking of our detection run
 >
 > Answer:
 
---- question 16 fill here ---
+Debugging method was of course dependant on group member. We all used the logging, and most of use also use the debugger with breakpoints. Moreover, the logs provided by Weights and Biases also proved helpful, because we could see the configuration and parameters while also seeing the error for the run, this became more difficult in GCP, when starting multiple runs at the same. Profiling is implemented for the project, but not used. For a larger project, this should be done since it could help find bottlenecks in the code. For example, data processing could be a bottleneck for a project with large data files, and therefore it could be useful.
 
 ## Working in the cloud
 
@@ -409,7 +416,25 @@ The second image shows the tracking of our detection run
 >
 > Answer:
 
---- question 17 fill here ---
+Vertex AI API,
+API Gateway API,
+Artifact Registry API,
+Gemini for Google Cloud API,
+Google Cloud APIs,
+Cloud Build API,
+Cloud Trace API,
+Compute Engine API
+Container Analysis API,
+Container Registry API,
+Gemini Cloud Assist API,
+Identity and Access Management (IAM) API,
+IAM Service Account Credentials API,
+Cloud Logging API,
+Cloud Monitoring API,
+Secret Manager API,
+Service Control API,
+Cloud Storage,
+Cloud Storage API
 
 ### Question 18
 
@@ -424,34 +449,35 @@ The second image shows the tracking of our detection run
 >
 > Answer:
 
---- question 18 fill here ---
+We did not have the biggest need to use the Compute Engine, since our training wasn't very heavy. However we used it for a small sample training run. We also used vertex ai for the same job, but chose to keep working in the Engine. We used a 4Gi CPU for training.
 
 ### Question 19
 
 > **Insert 1-2 images of your GCP bucket, such that we can see what data you have stored in it.**
-> **You can take inspiration from [this figure](figures/bucket.png).**
+> **You can take inspiration from [this figure](figures/bucke).**
 >
 > Answer:
 
---- question 19 fill here ---
+[Our GCP Buckets](figures/bucket.png)
 
 ### Question 20
 
 > **Upload 1-2 images of your GCP artifact registry, such that we can see the different docker images that you have**
-> **stored. You can take inspiration from [this figure](figures/registry.png).**
+> **stored. You can take inspiration from [this figure](figures/registr).**
 >
 > Answer:
 
---- question 20 fill here ---
+[Artifact registry](figures/registry.png)
+[Container registry](figures/registry2.png)
 
 ### Question 21
 
 > **Upload 1-2 images of your GCP cloud build history, so we can see the history of the images that have been build in**
-> **your project. You can take inspiration from [this figure](figures/build.png).**
+> **your project. You can take inspiration from [this figure](figures/buil).**
 >
 > Answer:
 
---- question 21 fill here ---
+[Cloud Build History](figures/build.png)
 
 ### Question 22
 
@@ -466,7 +492,7 @@ The second image shows the tracking of our detection run
 >
 > Answer:
 
---- question 22 fill here ---
+Yes, we ran a small sample training in the Compute Engine. We did this by creating a VM and a train container. Afterwards we ran the container with the VM. We choose to bake some training images and train on them. We also tried using vertex AI, and actually have set it up, so you can start a training job using vertex AI. However we found that Vertex is easier getting started with, but more difficult to debug when things go wrong - which they often do when working in the cloud.
 
 ## Deployment
 
@@ -483,7 +509,7 @@ The second image shows the tracking of our detection run
 >
 > Answer:
 
---- question 23 fill here ---
+Yes. We implemented a FastAPI service that loads the detector and OCR models once at startup and exposes inference endpoints. The API accepts image uploads, runs detection + OCR, and returns structured JSON with plate text, confidence, and bounding boxes. We used Pydantic schemas for request/response validation, added a `/health` endpoint for readiness checks, and handled common error cases (bad file type, empty image, model not loaded) with HTTP codes. To keep behavior consistent across environments, the API is containerized and uses the same configuration files as training. We also wrote API tests to validate response formats and edge cases, which run in CI with github actions.
 
 ### Question 24
 
@@ -514,7 +540,7 @@ The second image shows the tracking of our detection run
 >
 > Answer:
 
---- question 25 fill here ---
+Yes, we wrote unit tests for the FastAPI endpoints using pytest and FastAPI’s TestClient. The tests cover valid image uploads, invalid file type and error handling, and they run in CI with the rest of the test suite. We did not complete full load testing due to time constraints. If we were to do it, we would simulate concurrent users sending image requests, measure latency, throughput, and error rate, and then adjust the API (batching, model warmup, worker count, and image size limits) based on the results. We would document the maximum sustainable RPS before latency or error rate exceeded some acceptable thresholds.
 
 ### Question 26
 
@@ -548,7 +574,7 @@ The second image shows the tracking of our detection run
 >
 > Answer:
 
---- question 27 fill here ---
+We ended up using approximately 3 credits for the project, mainly on data buckets and cloud runs. We have used very few credits, maybe because our training has been fairly light. Working in the cloud is very difficult and takes a lot of time to learn - however it is also very powerful once you get the hang of it. Personally I would have liked to spend more time working in the cloud, perhaps in a seperate project than ours/mnist.
 
 ### Question 28
 
@@ -564,7 +590,7 @@ The second image shows the tracking of our detection run
 >
 > Answer:
 
---- question 28 fill here ---
+We implemented a simple frontend for the API to make demos and manual testing easier. The UI allows a user to upload an image, triggers the API inference, and displays the detected plate text and bounding boxes.
 
 ### Question 29
 

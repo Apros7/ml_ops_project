@@ -18,7 +18,7 @@ def test_normalize_path_relative_is_project_rooted() -> None:
     result = train._normalize_path("data/somewhere")
     assert result is not None
     assert result.is_absolute()
-    assert str(result).endswith("data/somewhere")
+    assert result.as_posix().endswith("data/somewhere")
 
 
 def test_load_hydra_config_is_reentrant() -> None:

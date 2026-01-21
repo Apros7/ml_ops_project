@@ -26,8 +26,13 @@ jobs:
       - name: Enable Docker BuildKit
         run: echo "DOCKER_BUILDKIT=1" >> "$GITHUB_ENV"
 
-      - name: Build train image
-        run: docker build -t train:ci -f dockerfiles/train.dockerfile .
+      - name: Build train image (if dataset present)
+        run: |
+          if [ -d "data/ccpd_base/ccpd_tiny" ]; then
+            docker build -t train:ci -f dockerfiles/train.dockerfile .
+          else
+            echo "Skipping train image build; dataset not present in CI."
+          fi
 
       - name: Build api image
         run: docker build -t api:ci -f dockerfiles/api.dockerfile .

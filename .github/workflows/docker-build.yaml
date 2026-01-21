@@ -26,11 +26,29 @@ jobs:
       - name: Enable Docker BuildKit
         run: echo "DOCKER_BUILDKIT=1" >> "$GITHUB_ENV"
 
-      - name: Build train image
-        run: docker build -t train:ci -f dockerfiles/train.dockerfile .
+      - name: Build train image (use DVC when available)
+        run: |
+          if command -v dvc >/dev/null 2>&1; then
+            dvc pull data.dvc || echo "DVC pull failed; falling back to local data if present."
+          fi
 
-      - name: Build api image
-        run: docker build -t api:ci -f dockerfiles/api.dockerfile .
+          if [ -d "data/ccpd_base/ccpd_tiny" ]; then
+            docker build -t train:ci -f dockerfiles/train.dockerfile .
+          else
+            echo "Skipping train image build; dataset not present in CI."
+          fi
+
+      - name: Build api image (use DVC when available)
+        run: |
+          if [ ! -f "yolov8n.pt" ] && command -v dvc >/dev/null 2>&1; then
+            dvc pull yolov8n.pt || echo "DVC pull failed; falling back to local file if present."
+          fi
+
+          if [ -f "yolov8n.pt" ]; then
+            docker build -t api:ci -f dockerfiles/api.dockerfile .
+          else
+            echo "Skipping api image build; yolov8n.pt not present in CI."
+          fi
 
       - name: Build eval image
         run: docker build -t eval:ci -f dockerfiles/eval.dockerfile .

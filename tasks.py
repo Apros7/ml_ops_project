@@ -441,7 +441,7 @@ def train_deploy(
     image = f"{region}-docker.pkg.dev/{project}/{repo}/train:{tag}"
     train_command = (
         "cd /app && "
-        "DVC_NO_SCM=1 DVC_ROOT=/app uv run dvc pull --no-scm && "
+        f"find {data_dir} -type f -print -quit 2>/dev/null | grep -q . && "
         f"uv run -m {PROJECT_NAME}.train train-both {data_dir} "
         f"--detector-batch-size {detector_batch_size} "
         f"--ocr-batch-size {ocr_batch_size} "
@@ -483,17 +483,15 @@ def train_release(
         ocr_batch_size: OCR batch size.
         max_images: Maximum images for OCR training.
     """
+    image = f"{region}-docker.pkg.dev/{project}/{repo}/train:{tag}"
     ctx.run(
-        "docker buildx build --platform linux/amd64 -t train:latest -f dockerfiles/train.dockerfile . --load",
+        f"docker buildx build --platform linux/amd64 -t {image} -f dockerfiles/train.dockerfile . --push",
         echo=True,
         pty=not WINDOWS,
     )
-    image = f"{region}-docker.pkg.dev/{project}/{repo}/train:{tag}"
-    ctx.run(f"docker tag train:latest {image}", echo=True, pty=not WINDOWS)
-    ctx.run(f"docker push {image}", echo=True, pty=not WINDOWS)
     train_command = (
         "cd /app && "
-        "DVC_NO_SCM=1 DVC_ROOT=/app uv run dvc pull --no-scm && "
+        f"find {data_dir} -type f -print -quit 2>/dev/null | grep -q . && "
         f"uv run -m {PROJECT_NAME}.train train-both {data_dir} "
         f"--detector-batch-size {detector_batch_size} "
         f"--ocr-batch-size {ocr_batch_size} "

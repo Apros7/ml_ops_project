@@ -1,0 +1,21 @@
+# config_cpu.yaml
+workerPoolSpecs:
+    machineSpec:
+        machineType: n1-highmem-4
+    replicaCount: 1
+    containerSpec:
+        imageUri: europe-west1-docker.pkg.dev/mlops-license-plate-484109/license-plate-repo/train:latest
+        command:
+            - sh
+            - -c
+        args:
+            - >-
+                uv run dvc pull
+                && uv run -m ml_ops.train train-both data/ccpd_small
+                --detector-batch-size 8
+                --ocr-batch-size 16
+                --max-images 5000
+        env:
+        - name: WANDB_API_KEY
+          value: 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
+serviceAccount: github-deployer@mlops-license-plate-484109.iam.gserviceaccount.com

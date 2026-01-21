@@ -64,6 +64,14 @@ uv venv
 uv pip install -e ".[dev]"
 ```
 
+To be able to push a new Docker image to Google Artifact Registry, authenticate with:
+
+```bash
+gcloud auth configure-docker \europe-west1-docker.pkg.dev
+```
+
+
+
 ## Common commands
 
 List tasks:

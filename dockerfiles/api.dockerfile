@@ -30,9 +30,9 @@ COPY LICENSE LICENSE
 # Install local package as well
 RUN uv sync --locked
 
-# API listens on 8000 inside the container
-EXPOSE 8000
+# API listens on 8080 (Cloud Run default)
+EXPOSE 8080
 
 # Start FastAPI app via uvicorn
 # Assumes you have `app = FastAPI(...)` in src/ml_ops/api.py
-ENTRYPOINT ["uv", "run", "uvicorn", "ml_ops.api:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/bin/sh", "-c", "uv run uvicorn ml_ops.api:app --host 0.0.0.0 --port ${PORT:-8080}"]

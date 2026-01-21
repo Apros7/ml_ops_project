@@ -375,7 +375,7 @@ The second image shows the tracking of our detection run
 >
 > Answer:
 
-We used Docker to standardize training, evaluation, the API, and the frontend so experiments ran identically across laptops, CI, and GCP. Each stage has its own image built from the Dockerfiles in dockerfiles/ to pin Python, CUDA, and system dependencies. Locally we built and ran the training image for reproducible runs with Hydra overrides and mounted datasets, and we ran the API image to validate inference and integration tests.
+We used Docker to standardize training, to evaluate the API and the frontend such that experiments could run identically across laptops, CI, and GCP. Each stage has its own image built from the Dockerfiles in dockerfiles/ to pin Python, CUDA, and system dependencies. Locally we built and ran the training image for reproducible runs with Hydra overrides and mounted datasets, and we ran the API image to validate inference and integration tests.
 
 Example training run: uv run invoke train-release
 
@@ -399,7 +399,7 @@ One of the Dockerfiles is here: [dockerfiles/train.dockerfile](dockerfiles/train
 >
 > Answer:
 
-Debugging method was of course dependant on group member. We all used the logging, and most of use also use the debugger with breakpoints. Profiling is implemented for the project, but not used. For a larger project, this should be done.
+Debugging method was of course dependant on group member. We all used the logging, and most of use also use the debugger with breakpoints. Moreover, the logs provided by Weights and Biases also proved helpful, because we could see the configuration and parameters while also seeing the error for the run, this became more difficult in GCP, when starting multiple runs at the same. Profiling is implemented for the project, but not used. For a larger project, this should be done since it could help find bottlenecks in the code. For example, data processing could be a bottleneck for a project with large data files, and therefore it could be useful.
 
 ## Working in the cloud
 

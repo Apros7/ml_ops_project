@@ -40,8 +40,8 @@ Available tasks:
         uv run invoke api-push                 # Push API image to registry
         uv run invoke api-deploy               # Deploy API image to Cloud Run
         uv run invoke api-release              # Build, tag, push, deploy API image
-        uv run invoke train-deploy             # Deploy train image to Cloud Run
-        uv run invoke train-release            # Build, tag, push, deploy train image
+        uv run invoke train-deploy             # Create Cloud Run Job for training
+        uv run invoke train-release            # Build, tag, push, update & execute training job
 
     Vertex:
         uv run invoke vertex-job              # Submit a Vertex AI custom training job. ie train in the cloud
@@ -59,8 +59,7 @@ PROJECT_NAME = "ml_ops"
 PYTHON_VERSION = "3.12"
 
 # Default data directory
-DEFAULT_DATA_DIR = "data/base"
-# DEFAULT_DATA_DIR = "data/ccpd_tiny"
+DEFAULT_DATA_DIR = "data/ccpd_base/ccpd_tiny"
 
 
 # ============================================================================
@@ -420,19 +419,41 @@ def train_deploy(
     repo: str = "license-plate-repo",
     tag: str = "latest",
     region: str = "europe-west1",
-    service: str = "train",
+    job: str = "train-job",
+    data_dir: str = DEFAULT_DATA_DIR,
+    detector_batch_size: int = 8,
+    ocr_batch_size: int = 16,
+    max_images: int = 5000,
 ) -> None:
-    """Deploy the training image to Cloud Run.
+    """Create a Cloud Run Job for training.
 
     Args:
         project: GCP project ID.
         repo: Artifact Registry repository name.
         tag: Docker image tag.
         region: Cloud Run region.
-        service: Cloud Run service name.
+        job: Cloud Run Job name.
+        data_dir: Dataset directory inside the container.
+        detector_batch_size: Detector batch size.
+        ocr_batch_size: OCR batch size.
+        max_images: Maximum images for OCR training.
     """
     image = f"{region}-docker.pkg.dev/{project}/{repo}/train:{tag}"
-    cmd = f"gcloud run deploy {service} " f"--region={region} " f"--image={image} " "--allow-unauthenticated"
+    train_command = (
+        "cd /app && "
+        "DVC_NO_SCM=1 DVC_ROOT=/app uv run dvc pull --no-scm && "
+        f"uv run -m {PROJECT_NAME}.train train-both {data_dir} "
+        f"--detector-batch-size {detector_batch_size} "
+        f"--ocr-batch-size {ocr_batch_size} "
+        f"--max-images {max_images}"
+    )
+    cmd = (
+        f"gcloud run jobs create {job} "
+        f"--region={region} "
+        f"--image={image} "
+        "--command=sh "
+        f'--args=-c,"{train_command}"'
+    )
     ctx.run(cmd, echo=True, pty=not WINDOWS)
 
 
@@ -443,16 +464,24 @@ def train_release(
     repo: str = "license-plate-repo",
     tag: str = "latest",
     region: str = "europe-west1",
-    service: str = "train",
+    job: str = "train-job",
+    data_dir: str = DEFAULT_DATA_DIR,
+    detector_batch_size: int = 8,
+    ocr_batch_size: int = 16,
+    max_images: int = 500,
 ) -> None:
-    """Build, tag, push, and deploy the training image.
+    """Build, tag, push, update, and execute the training job.
 
     Args:
         project: GCP project ID.
         repo: Artifact Registry repository name.
         tag: Docker image tag.
         region: Cloud Run/Artifact Registry region.
-        service: Cloud Run service name.
+        job: Cloud Run Job name.
+        data_dir: Dataset directory inside the container.
+        detector_batch_size: Detector batch size.
+        ocr_batch_size: OCR batch size.
+        max_images: Maximum images for OCR training.
     """
     ctx.run(
         "docker buildx build --platform linux/amd64 -t train:latest -f dockerfiles/train.dockerfile . --load",
@@ -462,8 +491,23 @@ def train_release(
     image = f"{region}-docker.pkg.dev/{project}/{repo}/train:{tag}"
     ctx.run(f"docker tag train:latest {image}", echo=True, pty=not WINDOWS)
     ctx.run(f"docker push {image}", echo=True, pty=not WINDOWS)
-    cmd = f"gcloud run deploy {service} " f"--region={region} " f"--image={image} " "--allow-unauthenticated"
-    ctx.run(cmd, echo=True, pty=not WINDOWS)
+    train_command = (
+        "cd /app && "
+        "DVC_NO_SCM=1 DVC_ROOT=/app uv run dvc pull --no-scm && "
+        f"uv run -m {PROJECT_NAME}.train train-both {data_dir} "
+        f"--detector-batch-size {detector_batch_size} "
+        f"--ocr-batch-size {ocr_batch_size} "
+        f"--max-images {max_images}"
+    )
+    update_cmd = (
+        f"gcloud run jobs update {job} "
+        f"--region={region} "
+        f"--image={image} "
+        "--command=sh "
+        f'--args=-c,"{train_command}"'
+    )
+    ctx.run(update_cmd, echo=True, pty=not WINDOWS)
+    ctx.run(f"gcloud run jobs execute {job} --region={region}", echo=True, pty=not WINDOWS)
 
 
 @task
@@ -507,7 +551,10 @@ def serve_docs(ctx: Context) -> None:
     ctx.run("uv run mkdocs serve --config-file docs/mkdocs.yaml", echo=True, pty=not WINDOWS)
 
 
-# create cloud run:
+# create cloud run using Engine:
+# gcloud run jobs create train-job3 --region=europe-west1 --memory=4Gi --set-env-vars WANDB_API_KEY="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" --image=europe-west1-docker.pkg.dev/mlops-license-plate-484109/license-plate-repo/train:latest --command=uv --args=run,-m,ml_ops.train,train-both,data/ccpd_small,--max-images,500
+# gcloud run jobs execute train-job3 --region=europe-west1
 
-# gcloud run jobs create train-job2 --region=europe-west1 --image=europe-west1-docker.pkg.dev/mlops-license-plate-484109/license-plate-repo/train:latest --command=uv --args=run,-m,ml_ops.train,train-both,data/ccpd_small,--max-images,50
-# gcloud run jobs execute train-job2 --region=europe-west1
+
+# gcloud run jobs create train-job --region=europe-west1 --memory=4Gi --set-secrets WANDB_API_KEY=projects/529952243062/secrets/WANDB_API_KEY:latest --image=europe-west1-docker.pkg.dev/mlops-license-plate-484109/license-plate-repo/train:latest --command=sh --args=-c,"uv run dvc pull && uv run -m ml_ops.train train-both data/ccpd_small --max-images 500"
+# gcloud run jobs execute train-job4

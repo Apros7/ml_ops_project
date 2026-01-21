@@ -26,6 +26,8 @@ COPY src src/
 COPY README.md README.md
 COPY LICENSE LICENSE
 COPY configs configs/
+COPY .dvc .dvc/
+COPY data.dvc data.dvc
 
 # Final dependency sync including local package
 RUN uv sync --locked

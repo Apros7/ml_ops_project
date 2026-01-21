@@ -587,7 +587,7 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 30 fill here ---
+The biggest challenges in the project was using Google Cloud Platform services to deploy and run our model. The reason for this was the difficulty of pin pointing the cause of errors, possibly due to lack of experiences with GCP. Furthermore, it took time to understand how the different services in Google Cloud interacted with each other, fx where can I see my cloud runs, and which service account does it use and why, how can I give it access to my data bucket and so on. To overcome these challenges we used the modules from the course to take a step back and start over. Moreover we used ChatGPT to help us debug and understand the error messages.
 
 ### Question 31
 
@@ -605,4 +605,12 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 > *We have used ChatGPT to help debug our code. Additionally, we used GitHub Copilot to help write some of our code.*
 > Answer:
 
---- question 31 fill here ---
+All students were equally involved in planning all elements of the project. Hereafter the specific contributions were distributed equally amongst us. All members contrubuted to code by pair programming. We have used Copilot to help write some of our code, and the documentation in particular.
+
+Contribution table:
+| Student   | Contribution                                                                 |
+|-----------|------------------------------------------------------------------------------|
+| s224209   | 25%                                                                          |
+| s224166   | 25%                                                                          |
+| s224194   | 25%                                                                          |
+| s224195   | 25%                                                                          |

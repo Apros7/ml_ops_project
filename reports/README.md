@@ -110,11 +110,11 @@ will check the repositories and the code to verify your answers.
 ### Extra
 
 * [ ] Write some documentation for your application (M32)
-* [ ] Publish the documentation to GitHub Pages (M32)
+* [x] Publish the documentation to GitHub Pages (M32)
 * [ ] Revisit your initial project description. Did the project turn out as you wanted?
 * [ ] Create an architectural diagram over your MLOps pipeline
-* [ ] Make sure all group members have an understanding about all parts of the project
-* [ ] Uploaded all your code to GitHub
+* [x] Make sure all group members have an understanding about all parts of the project
+* [x] Uploaded all your code to GitHub
 
 ## Group information
 
@@ -183,6 +183,8 @@ uv sync
 pre-commit install
 ```
 
+*Pre-commit will help run all the github actions and various checks locally and speed up the loop much faster when developing new code, so this too is crucial for new people*
+
 ### Question 5
 
 > **We expect that you initialized your project using the cookiecutter template. Explain the overall structure of your**
@@ -197,7 +199,9 @@ pre-commit install
 >
 > Answer:
 
-*From the cookiecutter template we have filled out the train.py, model.py, data.py, evaluate.py, api.py, visualize.py, and the tests, dockerfiles folders. We have added a range of different config folders that contains config files for our hydra setup for running our training experiments.*
+*From the cookiecutter template we have filled out the train.py, model.py, data.py, evaluate.py, api.py, visualize.py, and the tests, dockerfiles folders. We have added a range of different config folders that contains config files for our hydra setup for running our training experiments under the "config" folder*
+
+*Besides we haven't changed much from the original structure, as we haven't found missing functionality. One of things we initially debated was whether to move the src files directly into the src/ folder instead of having the ml_ops secondary folder, which feels a bit redundant in our case. We kept things as is, as it didn't really matter, but probably something we would consider in the future. We also added a runs/ folder for logging our local runs and investigating locally before pushing code to cloud and waiting for training runs there as that makes the iteration loop extremely slow*
 
 ### Question 6
 
@@ -212,7 +216,7 @@ pre-commit install
 >
 > Answer:
 
-*We enforced code quality with Ruff for linting and formatting, and pre-commit hooks to keep the codebase consistent. For typing and documentation we have not used any strict guidelines. However, for larger projects, these concepts are important because they ensure easier maintainability and collaboration, thus efficiency. It ensures that cross team coworkers easily can read, understand and write code without introducing foreign errors. In addition to this we added automatic testing on precommit to ensure assumptions and basic functionality didn't break.*
+*We enforced code quality with Ruff for linting and formatting, and pre-commit hooks to keep the codebase consistent. For typing and documentation we have not used any strict guidelines. However, for larger projects, these concepts are important because they ensure easier maintainability and collaboration, thus efficiency. It ensures that cross team coworkers easily can read, understand and write code without introducing foreign errors. In addition to this we added automatic testing on precommit to ensure assumptions and basic functionality didn't break. We did have some issues with the tests as it is limited what can be tested locally vs on CI (example: Linux vs MAC vs Windows), so we tried to test as many functionalities as possible here and then accepted that some cases might be different on various OS, which would then be caught in CI.*
 
 ## Version control
 
@@ -278,7 +282,7 @@ pre-commit install
 >
 > Answer:
 
-*Yes. We used DVC to version the dataset and it was stored in a bucket in remote storage using Google Cloud Storage. For this project it was not strictly necessary to use version control for the data, since it was static. However, for projects where a model should be checkpointed and retrained as new data arrives, it could be very useful, moreover, if it is important to know what data something is trained on, versioning is also beneficial, because then we could say that we know that this model did or did not know X, i.e. it enhances reproducibility.*
+*Yes. We used DVC to version the dataset and it was stored in a bucket in remote storage using Google Cloud Storage. For this project it was not strictly necessary to use version control for the data, since it was static. However, for projects where a model should be checkpointed and retrained as new data arrives, it could be very useful, moreover, if it is important to know what data something is trained on, versioning is also beneficial, because then we could say that we know that this model did or did not know X, i.e. it enhances reproducibility and helps setting up new people to the project. We experienced this when setting up the project in week 3 on a new pc and needed to download everything. This was a benefit we didn't realize at first.*
 
 ### Question 11
 
@@ -295,7 +299,9 @@ pre-commit install
 >
 > Answer:
 
-*We run several GitHub Actions workflows. Unit tests execute over three operating systems, two Python versions, and multiple PyTorch versions with caching for uv, pip, DVC artifacts, and model weights. We have separate workflows for linting (ruff check and format), pre-commit hooks, data-change validation (pulling DVC data and running data tests), model-registry checks, and Docker image builds. An example of a triggered workflow can be seen in the repo (.github/workflows/tests.yaml:), or in github: https://github.com/Apros7/ml_ops_project/actions/runs/21064304811*
+*We run several GitHub Actions workflows in .github/workflows/ to cover testing, linting, and targeted checks. Our main CI pipeline is tests.yaml, which runs pytest (with coverage) in a matrix across Ubuntu/Windows/macOS, Python 3.11 + 3.12, and multiple CPU PyTorch versions (2.5.1 and 2.6.0) to catch cross-platform and version-specific regressions early. To keep CI fast, we use caching for uv + pip (~/.cache/uv, ~/.cache/pip), DVC artifacts (.dvc/cache), and model/ML caches (~/.cache/torch, ~/.EasyOCR).*
+
+*For code quality, we have a dedicated linting.yaml workflow that runs Ruff linting and formatting checks, and a separate pre-commit.yaml workflow that runs the full pre-commit hook set (also caching the pre-commit environment). We additionally use targeted workflows to avoid running everything on every change: data-change.yaml triggers only for dataset/DVC changes and runs data-focused tests, and model-registry.yaml triggers for model/config changes and runs model checks. Finally, docker-build.yaml validates that Docker images build in CI, and build_api.yaml is a manually triggered build/deploy workflow for the API. (See examples of our actions running here. These actions run on each PR and commit to main to ensure the code is always up to date. At time of writing this we run 15 different test that is all required to succeed for a PR to be merged: https://github.com/Apros7/ml_ops_project/actions)*
 
 
 ## Running code and tracking experiments
@@ -315,7 +321,13 @@ pre-commit install
 >
 > Answer:
 
---- question 12 fill here ---
+We configure experiments with Hydra YAML configs in configs/. The main config (configs/config.yaml) composes modular groups (data/model/training/W&B), and ml_ops.train loads them via load_hydra_config(...). We have picked default parameters in the train file which gives good results. This can be overwritten if needed with --override/-o flags. We found this to be good enough, although we could've spent more time making the config files better, more direct and easier to use. Everything is logged to wandb to use later when analyzing trainings.
+Example run:
+```
+uv run python -m ml_ops.train train-detector data/ccpd_tiny \
+  --override training/detector=fast --override model/detector=yolov8s --name exp-y8s-fast
+```
+
 
 ### Question 13
 
@@ -346,6 +358,9 @@ pre-commit install
 > *As seen in the second image we are also tracking ... and ...*
 >
 > Answer:
+
+The first image shows the EasyOCR report on W&B for our best run so far: [EasyOCR W&B Report Image](figures/easyocr-results.png).
+The second image shows the tracking of our detection run
 
 --- question 14 fill here ---
 
@@ -581,6 +596,8 @@ pre-commit install
 > Answer:
 
 The biggest challenges in the project was using Google Cloud Platform services to deploy and run our model. The reason for this was the difficulty of pin pointing the cause of errors, possibly due to lack of experiences with GCP. Furthermore, it took time to understand how the different services in Google Cloud interacted with each other, fx where can I see my cloud runs, and which service account does it use and why, how can I give it access to my data bucket and so on. To overcome these challenges we used the modules from the course to take a step back and start over. Moreover we used ChatGPT to help us debug and understand the error messages.
+
+Another issue was the training itself. We spent quite a lot of time trying to get our own OCR model to work, but the model seemed to get stuck in local minima and couldn't improve. We also did not realize until later that finetuning in EasyOCR was possible, so we tried with many different configurations before being able to get any decent result. One of the issues was the fact the our data included number plates with both chinese and english characters. Using more computer, ignoring chinese characters as they are not relevant for us and finetuning using EasyOCR helped us get much much better models (>99% acc).
 
 ### Question 31
 

@@ -1,6 +1,6 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
-# System deps – same as train, since YOLO/OpenCV also run here
+# System deps
 RUN apt-get update && \
     apt-get install --no-install-recommends -y \
         build-essential \
@@ -10,29 +10,34 @@ RUN apt-get update && \
         libsm6 \
         libxext6 \
         libxrender1 \
+        curl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy dependency metadata first
+# Dependencies
 COPY pyproject.toml uv.lock ./
-
 ENV UV_LINK_MODE=copy
 RUN uv sync --locked --no-install-project
 
-
-# Copy project code + configs
+# Project code
 COPY src src/
 COPY configs configs/
+COPY models models/
+COPY yolov8n.pt yolov8n.pt
 COPY README.md README.md
 COPY LICENSE LICENSE
 
-# Install local package as well
 RUN uv sync --locked
 
-# API listens on 8000 inside the container
-EXPOSE 8000
+RUN mkdir -p logs
+ENV LOG_LEVEL=INFO
 
-# Start FastAPI app via uvicorn
-# Assumes you have `app = FastAPI(...)` in src/ml_ops/api.py
-ENTRYPOINT ["uv", "run", "uvicorn", "ml_ops.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Cloud Run port
+ENV PORT=8080
+EXPOSE ${PORT}
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/health || exit 1
+
+CMD ["sh", "-c", "uv run uvicorn ml_ops.api:app --host 0.0.0.0 --port ${PORT} --workers 2"]

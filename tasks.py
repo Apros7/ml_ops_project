@@ -31,6 +31,20 @@ Available tasks:
 
     Docker:
         uv run invoke docker-build            # Build docker images
+        uv run invoke docker-push             # Push docker images to registry
+
+    Cloud:
+        uv run invoke cloud-build             # Trigger a Cloud Build
+        uv run invoke api-build                # Build API docker image
+        uv run invoke api-tag                  # Tag API image for registry
+        uv run invoke api-push                 # Push API image to registry
+        uv run invoke api-deploy               # Deploy API image to Cloud Run
+        uv run invoke api-release              # Build, tag, push, deploy API image
+        uv run invoke train-deploy             # Create Cloud Run Job for training
+        uv run invoke train-release            # Build, tag, push, update & execute training job
+
+    Vertex:
+        uv run invoke vertex-job              # Submit a Vertex AI custom training job. ie train in the cloud
 
     API:
         uv run invoke api                     # Run the FastAPI service
@@ -45,8 +59,7 @@ PROJECT_NAME = "ml_ops"
 PYTHON_VERSION = "3.12"
 
 # Default data directory
-DEFAULT_DATA_DIR = "data/base"
-# DEFAULT_DATA_DIR = "data/ccpd_tiny"
+DEFAULT_DATA_DIR = "data/ccpd_base/ccpd_tiny"
 
 
 # ============================================================================
@@ -271,20 +284,252 @@ def docker_build(ctx: Context, progress: str = "plain") -> None:
         progress: Docker build progress output type.
     """
     ctx.run(
-        f"docker build -t train:latest . -f dockerfiles/train.dockerfile --progress={progress}",
+        f"docker buildx build --platform linux/amd64 -t train:latest . -f dockerfiles/train.dockerfile --progress={progress} --load",
         echo=True,
         pty=not WINDOWS,
     )
     ctx.run(
-        f"docker build -t api:latest . -f dockerfiles/api.dockerfile --progress={progress}",
+        f"docker buildx build --platform linux/amd64 -t api:latest . -f dockerfiles/api.dockerfile --progress={progress} --load",
         echo=True,
         pty=not WINDOWS,
     )
     ctx.run(
-        f"docker build -t eval:latest . -f dockerfiles/eval.dockerfile --progress={progress}",
+        f"docker buildx build --platform linux/amd64 -t eval:latest . -f dockerfiles/eval.dockerfile --progress={progress} --load",
         echo=True,
         pty=not WINDOWS,
     )
+
+
+@task
+def docker_push(ctx: Context) -> None:
+    """Push docker images to registry."""
+    ctx.run(
+        "docker tag train:latest europe-west1-docker.pkg.dev/mlops-license-plate-484109/license-plate-repo/train:latest",
+        echo=True,
+        pty=not WINDOWS,
+    )
+    ctx.run(
+        "docker push europe-west1-docker.pkg.dev/mlops-license-plate-484109/license-plate-repo/train:latest",
+        echo=True,
+        pty=not WINDOWS,
+    )
+
+
+@task
+def api_build(ctx: Context) -> None:
+    """Build the API docker image for Cloud Run (linux/amd64)."""
+    ctx.run(
+        "docker buildx build --platform linux/amd64 -t api:latest -f dockerfiles/api.dockerfile . --load",
+        echo=True,
+        pty=not WINDOWS,
+    )
+
+
+@task
+def api_tag(
+    ctx: Context,
+    project: str = "mlops-license-plate-484109",
+    repo: str = "license-plate-repo",
+    tag: str = "latest",
+    region: str = "europe-west1",
+) -> None:
+    """Tag the API image for Artifact Registry.
+
+    Args:
+        project: GCP project ID.
+        repo: Artifact Registry repository name.
+        tag: Docker image tag.
+        region: Artifact Registry region.
+    """
+    image = f"{region}-docker.pkg.dev/{project}/{repo}/api:{tag}"
+    ctx.run(f"docker tag api:latest {image}", echo=True, pty=not WINDOWS)
+
+
+@task
+def api_push(
+    ctx: Context,
+    project: str = "mlops-license-plate-484109",
+    repo: str = "license-plate-repo",
+    tag: str = "latest",
+    region: str = "europe-west1",
+) -> None:
+    """Push the API image to Artifact Registry.
+
+    Args:
+        project: GCP project ID.
+        repo: Artifact Registry repository name.
+        tag: Docker image tag.
+        region: Artifact Registry region.
+    """
+    image = f"{region}-docker.pkg.dev/{project}/{repo}/api:{tag}"
+    ctx.run(f"docker push {image}", echo=True, pty=not WINDOWS)
+
+
+@task
+def api_deploy(
+    ctx: Context,
+    project: str = "mlops-license-plate-484109",
+    repo: str = "license-plate-repo",
+    tag: str = "latest",
+    region: str = "europe-west1",
+    service: str = "api",
+) -> None:
+    """Deploy the API image to Cloud Run.
+
+    Args:
+        project: GCP project ID.
+        repo: Artifact Registry repository name.
+        tag: Docker image tag.
+        region: Cloud Run region.
+        service: Cloud Run service name.
+    """
+    image = f"{region}-docker.pkg.dev/{project}/{repo}/api:{tag}"
+    cmd = f"gcloud run deploy {service} " f"--region={region} " f"--image={image} " "--allow-unauthenticated"
+    ctx.run(cmd, echo=True, pty=not WINDOWS)
+
+
+@task
+def api_release(
+    ctx: Context,
+    project: str = "mlops-license-plate-484109",
+    repo: str = "license-plate-repo",
+    tag: str = "latest",
+    region: str = "europe-west1",
+    service: str = "api",
+) -> None:
+    """Build, tag, push, and deploy the API image.
+
+    Args:
+        project: GCP project ID.
+        repo: Artifact Registry repository name.
+        tag: Docker image tag.
+        region: Cloud Run/Artifact Registry region.
+        service: Cloud Run service name.
+    """
+    api_build(ctx)
+    api_tag(ctx, project=project, repo=repo, tag=tag, region=region)
+    api_push(ctx, project=project, repo=repo, tag=tag, region=region)
+    api_deploy(ctx, project=project, repo=repo, tag=tag, region=region, service=service)
+
+
+@task
+def train_deploy(
+    ctx: Context,
+    project: str = "mlops-license-plate-484109",
+    repo: str = "license-plate-repo",
+    tag: str = "latest",
+    region: str = "europe-west1",
+    job: str = "train-job",
+    data_dir: str = DEFAULT_DATA_DIR,
+    detector_batch_size: int = 8,
+    ocr_batch_size: int = 16,
+    max_images: int = 5000,
+) -> None:
+    """Create a Cloud Run Job for training.
+
+    Args:
+        project: GCP project ID.
+        repo: Artifact Registry repository name.
+        tag: Docker image tag.
+        region: Cloud Run region.
+        job: Cloud Run Job name.
+        data_dir: Dataset directory inside the container.
+        detector_batch_size: Detector batch size.
+        ocr_batch_size: OCR batch size.
+        max_images: Maximum images for OCR training.
+    """
+    image = f"{region}-docker.pkg.dev/{project}/{repo}/train:{tag}"
+    train_command = (
+        "cd /app && "
+        f"find {data_dir} -type f -print -quit 2>/dev/null | grep -q . && "
+        f"uv run -m {PROJECT_NAME}.train train-both {data_dir} "
+        f"--detector-batch-size {detector_batch_size} "
+        f"--ocr-batch-size {ocr_batch_size} "
+        f"--max-images {max_images}"
+    )
+    cmd = (
+        f"gcloud run jobs create {job} "
+        f"--region={region} "
+        f"--image={image} "
+        "--command=sh "
+        f'--args=-c,"{train_command}"'
+    )
+    ctx.run(cmd, echo=True, pty=not WINDOWS)
+
+
+@task
+def train_release(
+    ctx: Context,
+    project: str = "mlops-license-plate-484109",
+    repo: str = "license-plate-repo",
+    tag: str = "latest",
+    region: str = "europe-west1",
+    job: str = "train-job",
+    data_dir: str = DEFAULT_DATA_DIR,
+    detector_batch_size: int = 8,
+    ocr_batch_size: int = 16,
+    max_images: int = 500,
+) -> None:
+    """Build, tag, push, update, and execute the training job.
+
+    Args:
+        project: GCP project ID.
+        repo: Artifact Registry repository name.
+        tag: Docker image tag.
+        region: Cloud Run/Artifact Registry region.
+        job: Cloud Run Job name.
+        data_dir: Dataset directory inside the container.
+        detector_batch_size: Detector batch size.
+        ocr_batch_size: OCR batch size.
+        max_images: Maximum images for OCR training.
+    """
+    image = f"{region}-docker.pkg.dev/{project}/{repo}/train:{tag}"
+    ctx.run(
+        f"docker buildx build --platform linux/amd64 -t {image} -f dockerfiles/train.dockerfile . --push",
+        echo=True,
+        pty=not WINDOWS,
+    )
+    train_command = (
+        "cd /app && "
+        f"find {data_dir} -type f -print -quit 2>/dev/null | grep -q . && "
+        f"uv run -m {PROJECT_NAME}.train train-both {data_dir} "
+        f"--detector-batch-size {detector_batch_size} "
+        f"--ocr-batch-size {ocr_batch_size} "
+        f"--max-images {max_images}"
+    )
+    update_cmd = (
+        f"gcloud run jobs update {job} "
+        f"--region={region} "
+        f"--image={image} "
+        "--command=sh "
+        f'--args=-c,"{train_command}"'
+    )
+    ctx.run(update_cmd, echo=True, pty=not WINDOWS)
+    ctx.run(f"gcloud run jobs execute {job} --region={region}", echo=True, pty=not WINDOWS)
+
+
+@task
+def vertex_job(
+    ctx: Context,
+    config_path: str = "configs/vertex_train.yaml",
+) -> None:
+    """Submit a Vertex AI training job.
+
+    Args:
+        config_path: Path to the Vertex job spec YAML.
+    """
+    cmd = f"gcloud builds submit . --config={config_path}"
+    ctx.run(cmd, echo=True, pty=not WINDOWS)
+
+
+@task
+def cloud_build(ctx: Context, config_path: str = "cloudbuild.yaml") -> None:
+    """Trigger a Cloud Build using a config file.
+
+    Args:
+        config_path: Path to the Cloud Build config YAML.
+    """
+    ctx.run(f"gcloud builds submit . --config={config_path}", echo=True, pty=not WINDOWS)
 
 
 # ============================================================================
@@ -302,3 +547,12 @@ def build_docs(ctx: Context) -> None:
 def serve_docs(ctx: Context) -> None:
     """Serve documentation locally."""
     ctx.run("uv run mkdocs serve --config-file docs/mkdocs.yaml", echo=True, pty=not WINDOWS)
+
+
+# create cloud run using Engine:
+# gcloud run jobs create train-job3 --region=europe-west1 --memory=4Gi --set-env-vars WANDB_API_KEY="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" --image=europe-west1-docker.pkg.dev/mlops-license-plate-484109/license-plate-repo/train:latest --command=uv --args=run,-m,ml_ops.train,train-both,data/ccpd_small,--max-images,500
+# gcloud run jobs execute train-job3 --region=europe-west1
+
+
+# gcloud run jobs create train-job --region=europe-west1 --memory=4Gi --set-secrets WANDB_API_KEY=projects/529952243062/secrets/WANDB_API_KEY:latest --image=europe-west1-docker.pkg.dev/mlops-license-plate-484109/license-plate-repo/train:latest --command=sh --args=-c,"uv run dvc pull && uv run -m ml_ops.train train-both data/ccpd_small --max-images 500"
+# gcloud run jobs execute train-job4

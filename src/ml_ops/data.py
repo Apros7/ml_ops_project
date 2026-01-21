@@ -678,21 +678,13 @@ def _export_yolo_format_internal(
 ) -> None:
     """Internal function for YOLO format export (called within profiler context)."""
     output_dir = Path(output_dir)
-    images_dir = output_dir / "images"
-    labels_dir = output_dir / "labels"
+    data_dir = Path(data_dir)
 
-    if images_dir.exists():
-        logger.info(f"Clearing old data from {images_dir}...")
-        shutil.rmtree(images_dir)
-    if labels_dir.exists():
-        logger.info(f"Clearing old data from {labels_dir}...")
-        shutil.rmtree(labels_dir)
-
-    images_dir.mkdir(parents=True, exist_ok=True)
-    labels_dir.mkdir(parents=True, exist_ok=True)
+    if not data_dir.exists() or not data_dir.is_dir():
+        raise FileNotFoundError(f"CCPD data directory not found: {data_dir}")
 
     logger.info(f"Scanning for images in {data_dir}...")
-    image_paths = []
+    image_paths: list[Path] = []
     if split_file and split_file.exists():
         logger.info(f"Using split file: {split_file}")
         with open(split_file) as f:
@@ -705,9 +697,48 @@ def _export_yolo_format_internal(
         for ext in ["*.jpg", "*.jpeg", "*.png"]:
             image_paths.extend(data_dir.rglob(ext))
 
+    if not image_paths:
+        raise FileNotFoundError(
+            "No images found for YOLO export.\n"
+            f"  - data_dir: {data_dir}\n"
+            "  - expected extensions: .jpg/.jpeg/.png\n"
+            "Tip: pass the CCPD dataset folder (e.g. data/ccpd_tiny or data/ccpd_base)."
+        )
+
     if len(image_paths) > max_images:
         logger.warning(f"Limiting to {max_images} images (found {len(image_paths)})")
         image_paths = image_paths[:max_images]
+
+    # Preflight CCPD filename parsing before deleting any existing outputs.
+    parseable = 0
+    for img_path in image_paths[: min(len(image_paths), 50)]:
+        try:
+            parse_ccpd_filename(img_path.name)
+        except (ValueError, IndexError):
+            continue
+        parseable += 1
+        break
+
+    if parseable == 0:
+        raise ValueError(
+            "No CCPD-formatted filenames found in the input image set.\n"
+            f"  - data_dir: {data_dir}\n"
+            f"  - scanned images: {len(image_paths)}\n"
+            "This export expects CCPD2019 images where the bounding box is encoded in the filename."
+        )
+
+    images_dir = output_dir / "images"
+    labels_dir = output_dir / "labels"
+
+    if images_dir.exists():
+        logger.info(f"Clearing old data from {images_dir}...")
+        shutil.rmtree(images_dir)
+    if labels_dir.exists():
+        logger.info(f"Clearing old data from {labels_dir}...")
+        shutil.rmtree(labels_dir)
+
+    images_dir.mkdir(parents=True, exist_ok=True)
+    labels_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Processing {len(image_paths)} images")
 
@@ -751,6 +782,17 @@ def _export_yolo_format_internal(
     logger.info(f"  Output directory: {output_dir}")
     logger.info(f"  Time elapsed: {elapsed:.1f}s ({exported/elapsed:.1f} img/s)")
     logger.info(f"{'='*50}")
+
+    if exported == 0:
+        raise RuntimeError(
+            "YOLO export produced 0 samples.\n"
+            f"  - data_dir: {data_dir}\n"
+            f"  - total images scanned: {len(image_paths)}\n"
+            f"  - skipped (parse error): {skipped_parse}\n"
+            f"  - skipped (read error): {skipped_read}\n"
+            f"  - output_dir: {output_dir}\n"
+            "This usually indicates non-CCPD filenames or unreadable images."
+        )
 
 
 def preprocess(data_path: Path, output_folder: Path) -> None:

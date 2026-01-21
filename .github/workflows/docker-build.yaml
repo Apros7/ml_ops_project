@@ -26,8 +26,12 @@ jobs:
       - name: Enable Docker BuildKit
         run: echo "DOCKER_BUILDKIT=1" >> "$GITHUB_ENV"
 
-      - name: Build train image (if dataset present)
+      - name: Build train image (use DVC when available)
         run: |
+          if command -v dvc >/dev/null 2>&1; then
+            dvc pull data.dvc || echo "DVC pull failed; falling back to local data if present."
+          fi
+
           if [ -d "data/ccpd_base/ccpd_tiny" ]; then
             docker build -t train:ci -f dockerfiles/train.dockerfile .
           else

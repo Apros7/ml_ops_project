@@ -114,6 +114,56 @@ def _log_yolo_results_to_wandb(results_file: Path) -> None:
                 wandb.log(payload, step=payload.get("epoch"))
 
 
+def _find_latest_ultralytics_run_dir(project_dir: Path, experiment_name: str) -> Path | None:
+    """Find the most recent Ultralytics run directory for an experiment.
+
+    Ultralytics increments run directories when `exist_ok=False` (default), e.g.
+    `plate_detection` -> `plate_detection2`, `plate_detection3`, ...
+
+    Args:
+        project_dir: The directory passed to Ultralytics as `project=...`.
+        experiment_name: The directory name passed as `name=...`.
+
+    Returns:
+        The run directory path if found, otherwise None.
+    """
+    project_dir = Path(project_dir)
+    direct = project_dir / experiment_name
+    if (direct / "results.csv").exists():
+        return direct
+
+    if not project_dir.exists():
+        return None
+
+    candidates = [p for p in project_dir.glob(f"{experiment_name}*") if p.is_dir()]
+    if not candidates:
+        return direct if direct.exists() else None
+
+    with_results = [p for p in candidates if (p / "results.csv").exists()]
+    selection = with_results or candidates
+    return max(selection, key=lambda p: p.stat().st_mtime)
+
+
+def _log_yolo_artifacts_to_wandb(run_dir: Path) -> None:
+    """Log common Ultralytics output plots to W&B (if present)."""
+    plots: dict[str, Path] = {
+        "yolo/results": run_dir / "results.png",
+        "yolo/confusion_matrix": run_dir / "confusion_matrix.png",
+        "yolo/PR_curve": run_dir / "PR_curve.png",
+        "yolo/F1_curve": run_dir / "F1_curve.png",
+        "yolo/P_curve": run_dir / "P_curve.png",
+        "yolo/R_curve": run_dir / "R_curve.png",
+    }
+
+    images: dict[str, wandb.Image] = {}
+    for key, path in plots.items():
+        if path.exists():
+            images[key] = wandb.Image(str(path))
+
+    if images:
+        wandb.log(images)
+
+
 def _export_best_model(src: Path, dst: Path) -> None:
     """Copy a trained model artifact into the project's models folder.
 
@@ -704,21 +754,31 @@ names:
     )
 
     if wandb_active:
-        results_file = project_path / experiment_name / "results.csv"
-        _log_yolo_results_to_wandb(results_file)
+        run_dir = _find_latest_ultralytics_run_dir(project_path, experiment_name)
+        if run_dir is None:
+            logger.warning(
+                "W&B logging skipped: could not locate Ultralytics run directory "
+                f"under {project_path} for experiment '{experiment_name}'."
+            )
+        else:
+            results_file = run_dir / "results.csv"
+            _log_yolo_results_to_wandb(results_file)
+            _log_yolo_artifacts_to_wandb(run_dir)
+            wandb.log({"ultralytics/save_dir": str(run_dir)})
 
     _finish_wandb_run(wandb_active)
 
-    logger.info(f"\nTraining complete! Results saved to {project_path / experiment_name}")
-    logger.info(f"  - Training curves: {project_path / experiment_name / 'results.png'}")
-    logger.info(f"  - Metrics CSV: {project_path / experiment_name / 'results.csv'}")
-    logger.info(f"  - Best weights: {project_path / experiment_name / 'weights' / 'best.pt'}")
+    run_dir = _find_latest_ultralytics_run_dir(project_path, experiment_name) or (project_path / experiment_name)
+    logger.info(f"\nTraining complete! Results saved to {run_dir}")
+    logger.info(f"  - Training curves: {run_dir / 'results.png'}")
+    logger.info(f"  - Metrics CSV: {run_dir / 'results.csv'}")
+    logger.info(f"  - Best weights: {run_dir / 'weights' / 'best.pt'}")
     if wandb_active:
         entity = wandb_cfg.get("entity", WANDB_ENTITY)
         project = wandb_cfg.get("project", WANDB_PROJECT)
         logger.info(f"  - W&B Dashboard: https://wandb.ai/{entity}/{project}")
 
-    best_weights = project_path / experiment_name / "weights" / "best.pt"
+    best_weights = run_dir / "weights" / "best.pt"
     if best_weights.exists():
         _export_best_model(best_weights, MODELS_DIR / "yolo_best.pt")
     else:

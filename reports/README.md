@@ -123,7 +123,7 @@ will check the repositories and the code to verify your answers.
 >
 > Answer:
 
-Group 60
+*Group 60*
 
 ### Question 2
 > **Enter the study number for each member in the group**
@@ -148,7 +148,7 @@ Group 60
 >
 > Answer:
 
---- question 3 fill here ---
+*We used the Ultralytics and EasyOCR opensource frameworks for training of yolo/detr models and finetuning of ocr models for various languages respectively. We first tried implemented parts of the OCR model ourselves, but couldn't get good results. Using Yolov8n from Ultralytics and finetuning EasyOCR helped massively with respect to all the training code, model tuning and general performance, so that we could spend our time on the mlops part of the project.*
 
 ## Coding environment
 
@@ -212,9 +212,7 @@ pre-commit install
 >
 > Answer:
 
---- question 6 fill here ---
-
-We enforced code quality with Ruff for linting and formatting, and pre-commit hooks to keep the codebase consistent. For typing and documentation we have not used any strict guidelines. However, for larger projects, these concepts are important because they ensure easier maintainability and collaboration, thus efficiency. It ensures that cross team coworkers easily can read, understand and write code without introducing foreign errors.
+*We enforced code quality with Ruff for linting and formatting, and pre-commit hooks to keep the codebase consistent. For typing and documentation we have not used any strict guidelines. However, for larger projects, these concepts are important because they ensure easier maintainability and collaboration, thus efficiency. It ensures that cross team coworkers easily can read, understand and write code without introducing foreign errors. In addition to this we added automatic testing on precommit to ensure assumptions and basic functionality didn't break.*
 
 ## Version control
 
@@ -233,9 +231,7 @@ We enforced code quality with Ruff for linting and formatting, and pre-commit ho
 >
 > Answer:
 
---- question 7 fill here ---
-
-We implemented 12 tests across model, data, api and training. For training we are merely testing if the configuration used is valid. For the model, we are testing the forward pass of the detector and OCR, to ensure correct output shapes. Similarly for the data, where we primarily test for proper input dimensions and labels. For the API, we test the endpoints for valid and invalid inputs.
+*We implemented 67 tests across data, model, training, evaluation, profiling, and API. For training we mainly validate Hydra config handling, data.yaml generation, and that detector/OCR training helpers are invoked (mocked) without running full training. For models we test forward passes and decoding to ensure correct output shapes. For data we test CCPD filename parsing, dataset/dataloader behavior, and YOLO export creating image/label files. For evaluation we test metric utilities. For the API we test endpoints with valid and invalid inputs.*
 
 ### Question 8
 
@@ -249,6 +245,8 @@ We implemented 12 tests across model, data, api and training. For training we ar
 > *code and even if we were then...*
 >
 > Answer:
+
+*[This image](figures/test-coverage.png) shows the coverage across the src files. It spans from 7-100% depending on, how much of the code we could test and made sense to test. Obviously, you could always go for a higher amount of coverage and more testing scenarios, which is always a trade-off. We made a rather small amount of tests in the beginning to test simple model passes, data types and various assumptions, and then added regression tests as we found bugs and improved our model. Just because coverage is high (the lines are being hit in a test), errors should for sure still happen. Having some tests for all your code is probably good, but only if they test actual scenarios and not redundant scenarios.*
 
 --- question 8 fill here ---
 
@@ -280,9 +278,7 @@ We implemented 12 tests across model, data, api and training. For training we ar
 >
 > Answer:
 
---- question 10 fill here ---
-
-Yes. We used DVC to version the dataset and it was stored in a bucket in remote storage using Google Cloud Storage. For this project it was not strictly necessary to use version control for the data, since it was static. However, for projects where a model should be checkpointed and retrained as new data arrives, it could be very useful, moreover, if it is important to know what data something is trained on, versioning is also beneficial, because then we could say that we know that this model did or did not know X, i.e. it enhances reproducibility.
+*Yes. We used DVC to version the dataset and it was stored in a bucket in remote storage using Google Cloud Storage. For this project it was not strictly necessary to use version control for the data, since it was static. However, for projects where a model should be checkpointed and retrained as new data arrives, it could be very useful, moreover, if it is important to know what data something is trained on, versioning is also beneficial, because then we could say that we know that this model did or did not know X, i.e. it enhances reproducibility.*
 
 ### Question 11
 
@@ -299,10 +295,7 @@ Yes. We used DVC to version the dataset and it was stored in a bucket in remote 
 >
 > Answer:
 
---- question 11 fill here ---
-
-We run several GitHub Actions workflows. Unit tests execute over three operating systems, two Python versions, and multiple PyTorch versions with caching for uv, pip, DVC artifacts, and model weights. We have separate workflows for linting (ruff check and format), pre-commit hooks, data-change validation (pulling DVC data and running data tests), model-registry checks, and Docker image builds. An example of a triggered workflow can be seen in the repo (.github/workflows/tests.yaml:), or in github: https://github.com/Apros7/ml_ops_project/actions/runs/21064304811
-
+*We run several GitHub Actions workflows. Unit tests execute over three operating systems, two Python versions, and multiple PyTorch versions with caching for uv, pip, DVC artifacts, and model weights. We have separate workflows for linting (ruff check and format), pre-commit hooks, data-change validation (pulling DVC data and running data tests), model-registry checks, and Docker image builds. An example of a triggered workflow can be seen in the repo (.github/workflows/tests.yaml:), or in github: https://github.com/Apros7/ml_ops_project/actions/runs/21064304811*
 
 
 ## Running code and tracking experiments

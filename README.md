@@ -7,7 +7,7 @@ DTU ML Ops course project: License Plate Recognition.
 This repository trains and serves a two-stage pipeline:
 
 - License plate detection (YOLOv8)
-- License plate text recognition (CRNN + EasyOCR baselines)
+- License plate text recognition (fine-tuned EasyOCR recognizer; CRNN available for comparison)
 
 ## Data
 
@@ -85,6 +85,7 @@ Train detector or OCR:
 ```bash
 uv run invoke train-detector -- data/ccpd_tiny
 uv run invoke train-ocr -- data/ccpd_tiny
+uv run invoke train-crnn -- data/ccpd_tiny
 ```
 
 Run the API:
@@ -118,7 +119,7 @@ configs/
 ├── data/                 # dataset presets (base, augmented, ...)
 ├── model/
 │   ├── detector/         # YOLO variants (yolov8n, yolov8s, ...)
-│   └── ocr/              # CRNN variants (crnn_default, crnn_full, ...)
+│   └── ocr/              # OCR presets (used by both EasyOCR fine-tune + CRNN comparison)
 ├── training/
 │   ├── detector/         # detector schedules (default, fast, ...)
 │   └── ocr/              # OCR schedules (default, quick, ...)
@@ -131,9 +132,12 @@ Every Typer command in `src/ml_ops/train.py` accepts Hydra overrides via `-o/--o
 
 ```
 uv run python -m ml_ops.train train-detector data/ccpd_tiny \
-	-o model/detector=yolov8s -o training/detector=fast -o _wandb_configs_=disabled
+	-o model/detector=yolov8s -o training/detector=fast -o wandb_configs=disabled
 
 uv run python -m ml_ops.train train-ocr data/ccpd_tiny \
+	-o model/ocr=crnn_full -o training/ocr=quick
+
+uv run python -m ml_ops.train train-crnn data/ccpd_tiny \
 	-o model/ocr=crnn_full -o training/ocr=quick
 ```
 
@@ -142,10 +146,10 @@ uv run python -m ml_ops.train train-ocr data/ccpd_tiny \
 Invoke tasks wrap the same commands. Use `--` to pass overrides through the task interface:
 
 ```
-uv run invoke train-detector -- data/ccpd_tiny --override model/detector=yolov8s
-uv run invoke train-ocr -- data/ccpd_tiny --override _wandb_configs_=disabled
-uv run invoke train-both -- data/ccpd_tiny --override training/ocr=quick
-uv run invoke train-detector -- data/ccpd_tiny --override model/detector=yolov8s --override training/detector=fast
+uv run invoke train-detector --data-dir data/ccpd_tiny --override model/detector=yolov8s
+uv run invoke train-ocr --data-dir data/ccpd_tiny --override wandb_configs=disabled
+uv run invoke train-both --data-dir data/ccpd_tiny --override training/ocr=quick
+uv run invoke train-detector --data-dir data/ccpd_tiny --override model/detector=yolov8s --override training/detector=fast
 ```
 
 You can chain multiple `--override key=value` pairs to mix dataset, model, training, and logging presets without editing config files. To add new presets, simply add new config files in the appropriate subdirectories under `configs/`.

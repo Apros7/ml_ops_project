@@ -280,7 +280,7 @@ pre-commit install
 >
 > Answer:
 
-*Yes. We used DVC to version the dataset and it was stored in a bucket in remote storage using Google Cloud Storage. For this project it was not strictly necessary to use version control for the data, since it was static. However, for projects where a model should be checkpointed and retrained as new data arrives, it could be very useful, moreover, if it is important to know what data something is trained on, versioning is also beneficial, because then we could say that we know that this model did or did not know X, i.e. it enhances reproducibility and helps setting up new people to the project. We experienced this when setting up the project in week 3 on a new pc and needed to download everything. This was a benefit we didn't realize at first.*
+*Yes. We used DVC to version the dataset and it was stored in a bucket in remote storage using Google Cloud Storage. For this project it was not strictly necessary to use version control for the data, since it was static. However, for projects where a model should be checkpointed and retrained as new data arrives, it could be very useful, moreover, if it is important to know what data something is trained on, versioning is also beneficial, because then we could say that we know that this model did or did not know X, i.e. it enhances reproducibility and helps setting up new people to the project. We experienced this when setting up the project in week 3 on a new pc and needed to download everything. This was a benefit we didn't realize at first. Additionally, we manually uploaded our trained models to a bucket in Google Cloud, but we did not manage to include them in DVC. Integrating model files into DVC would have further improved reproducibility.*
 
 ### Question 11
 
@@ -476,6 +476,8 @@ We did not have the biggest need to use the Compute Engine, since our training w
 > **your project. You can take inspiration from [this figure](figures/buil).**
 >
 > Answer:
+
+This is our cloud build history.
 
 [Cloud Build History](figures/build.png)
 

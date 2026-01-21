@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from prometheus_client import Counter, Histogram, Gauge, make_asgi_app
 
 from ml_ops.logging_config import setup_logging
+from ml_ops.model_loader import download_model
 
 log_level = os.getenv("LOG_LEVEL", "INFO")
 logger = setup_logging(log_level, "logs/api.log")
@@ -111,6 +112,33 @@ async def update_system_metrics() -> None:
 
         await asyncio.sleep(0.5)
 
+
+MODEL_BUCKET = os.getenv("MODEL_BUCKET")
+YOLO_MODEL = os.getenv("YOLO_MODEL")
+OCR_MODEL = os.getenv("OCR_MODEL")
+
+if not all([MODEL_BUCKET, YOLO_MODEL, OCR_MODEL]):
+    raise RuntimeError(
+        "MODEL_BUCKET, YOLO_MODEL, and OCR_MODEL environment variables must be set"
+    )
+
+LOCAL_MODEL_DIR = Path("/tmp/models")
+LOCAL_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
+YOLO_PATH = download_model(
+    MODEL_BUCKET,
+    YOLO_MODEL,
+    str(LOCAL_MODEL_DIR / "yolo.pth"),
+)
+
+OCR_PATH = download_model(
+    MODEL_BUCKET,
+    OCR_MODEL,
+    str(LOCAL_MODEL_DIR / "ocr.pth"),
+)
+
+logger.info(f"YOLO model loaded from {YOLO_PATH}")
+logger.info(f"OCR model loaded from {OCR_PATH}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

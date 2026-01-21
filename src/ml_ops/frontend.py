@@ -28,7 +28,7 @@ Example API Response Format:
                 }
             ]
         }
-    
+
     Detection:
         {
             "success": true,
@@ -130,19 +130,19 @@ def get_system_metrics(backend_url: str) -> dict[str, float]:
         if response.status_code == 200:
             metrics_text = response.text
             metrics = {"cpu": 0.0, "memory": 0.0, "disk": 0.0}
-            
+
             for line in metrics_text.split("\n"):
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
-                
+
                 # Handle Prometheus format: metric_name{labels} value or metric_name value
                 parts = line.split()
                 if len(parts) >= 2:
                     metric_name = parts[0].split("{")[0]  # Remove labels if present
                     try:
                         value = float(parts[-1])  # Last part is the value
-                        
+
                         if metric_name == "system_cpu_percent":
                             metrics["cpu"] = value
                         elif metric_name == "system_memory_percent":
@@ -151,7 +151,7 @@ def get_system_metrics(backend_url: str) -> dict[str, float]:
                             metrics["disk"] = value
                     except (ValueError, IndexError):
                         pass
-            
+
             return metrics
     except requests.RequestException:
         pass
@@ -367,21 +367,21 @@ def main() -> None:
         if health["healthy"]:
             st.header("💻 System Load")
             metrics = get_system_metrics(backend_url)
-            
+
             cpu_value = metrics.get("cpu", 0.0)
             memory_value = metrics.get("memory", 0.0)
             disk_value = metrics.get("disk", 0.0)
-            
-            cpu_color = SUCCESS_COLOR if cpu_value < 70 else WARNING_COLOR if cpu_value < 90 else ERROR_COLOR
-            memory_color = SUCCESS_COLOR if memory_value < 70 else WARNING_COLOR if memory_value < 90 else ERROR_COLOR
-            disk_color = SUCCESS_COLOR if disk_value < 70 else WARNING_COLOR if disk_value < 90 else ERROR_COLOR
-            
+
+            # cpu_color = SUCCESS_COLOR if cpu_value < 70 else WARNING_COLOR if cpu_value < 90 else ERROR_COLOR
+            # memory_color = SUCCESS_COLOR if memory_value < 70 else WARNING_COLOR if memory_value < 90 else ERROR_COLOR
+            # disk_color = SUCCESS_COLOR if disk_value < 70 else WARNING_COLOR if disk_value < 90 else ERROR_COLOR
+
             st.metric("CPU Usage", f"{cpu_value:.1f}%")
             st.progress(cpu_value / 100)
-            
+
             st.metric("Memory Usage", f"{memory_value:.1f}%")
             st.progress(memory_value / 100)
-            
+
             st.metric("Disk Usage", f"{disk_value:.1f}%")
             st.progress(disk_value / 100)
 
@@ -534,14 +534,14 @@ def main() -> None:
 if __name__ == "__main__":
     if "last_refresh" not in st.session_state:
         st.session_state.last_refresh = time.time()
-    
+
     # Auto-refresh every 0.5 seconds
     current_time = time.time()
     if current_time - st.session_state.last_refresh >= 0.5:
         st.session_state.last_refresh = current_time
-    
+
     main()
-    
+
     # Schedule next refresh
     time.sleep(0.1)  # Small delay to prevent excessive CPU usage
     st.rerun()

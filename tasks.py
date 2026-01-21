@@ -285,6 +285,11 @@ def docker_build(ctx: Context, progress: str = "plain") -> None:
         echo=True,
         pty=not WINDOWS,
     )
+    ctx.run(
+        f"docker build -t frontend:latest . -f dockerfiles/frontend.dockerfile --progress={progress}",
+        echo=True,
+        pty=not WINDOWS,
+    )
 
 
 # ============================================================================

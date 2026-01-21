@@ -8,7 +8,7 @@ import torch
 from tqdm import tqdm
 from loguru import logger
 
-from ml_ops.model import PlateDetector, PlateOCR, LicensePlateRecognizer
+from ml_ops.model import PlateDetector, PlateOCR, LicensePlateRecognizer, PretrainedPlateOCR
 from ml_ops.data import CCPDDataModule, parse_ccpd_filename
 
 app = typer.Typer()
@@ -57,7 +57,7 @@ def calculate_char_accuracy(pred: str, gt: str) -> float:
 @app.command()
 def evaluate_detector(
     data_dir: Path = typer.Argument(..., help="Path to test images"),
-    weights: str = typer.Option("runs/detect/plate_detection/weights/best.pt", help="Path to detector weights"),
+    weights: str = typer.Option("models/yolo_best.pth", help="Path to detector weights"),
     conf_threshold: float = typer.Option(0.25, help="Confidence threshold"),
     iou_threshold: float = typer.Option(0.5, help="IoU threshold for matching"),
     max_samples: int = typer.Option(None, help="Maximum samples to evaluate"),
@@ -136,7 +136,7 @@ def evaluate_detector(
 @app.command()
 def evaluate_ocr(
     data_dir: Path = typer.Argument(..., help="Path to CCPD dataset"),
-    checkpoint: str = typer.Option(..., help="Path to OCR checkpoint"),
+    checkpoint: str = typer.Option(..., help="Path to OCR weights (.pth) or checkpoint (.ckpt)"),
     split_dir: Path = typer.Option(None, help="Directory with split files"),
     batch_size: int = typer.Option(64, help="Batch size"),
     num_workers: int = typer.Option(4, help="Number of workers"),
@@ -153,11 +153,12 @@ def evaluate_ocr(
     Returns:
         Dictionary with evaluation metrics.
     """
-    model = PlateOCR.load_from_checkpoint(checkpoint)
-    model.eval()
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
+    if Path(checkpoint).suffix.lower() == ".pth":
+        model: torch.nn.Module = PretrainedPlateOCR.from_pth(checkpoint).to(device)
+    else:
+        model = PlateOCR.load_from_checkpoint(checkpoint).to(device)
+    model.eval()
 
     data_module = CCPDDataModule(
         data_dir=data_dir,
@@ -178,8 +179,11 @@ def evaluate_ocr(
             images = batch["images"].to(device)
             plate_texts = batch["plate_texts"]
 
-            log_probs = model(images)
-            predictions = model.decode(log_probs)
+            if isinstance(model, PretrainedPlateOCR) and images.size(1) != 1:
+                images = images.mean(dim=1, keepdim=True)
+
+            out = model(images)
+            predictions = model.decode(out)
 
             for pred, gt in zip(predictions, plate_texts):
                 total_samples += 1
@@ -207,8 +211,8 @@ def evaluate_ocr(
 @app.command()
 def evaluate_pipeline(
     data_dir: Path = typer.Argument(..., help="Path to test images"),
-    detector_weights: str = typer.Option("runs/detect/plate_detection/weights/best.pt", help="Detector weights"),
-    ocr_checkpoint: str = typer.Option("runs/ocr/plate_ocr/checkpoints/last.ckpt", help="OCR checkpoint"),
+    detector_weights: str = typer.Option("models/yolo_best.pth", help="Detector weights"),
+    ocr_checkpoint: str = typer.Option("models/ocr_best.pth", help="OCR weights (.pth) or checkpoint (.ckpt)"),
     conf_threshold: float = typer.Option(0.25, help="Detection confidence threshold"),
     max_samples: int = typer.Option(None, help="Maximum samples to evaluate"),
 ) -> dict[str, Any]:

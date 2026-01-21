@@ -30,5 +30,8 @@ COPY configs configs/
 # Final dependency sync including local package
 RUN uv sync --locked
 
+# Copy model weights into the image (optional; useful for warm-start / offline runs)
+COPY models models/
+
 # Default entrypoint = training script
 ENTRYPOINT ["uv", "run", "-m", "ml_ops.train"]

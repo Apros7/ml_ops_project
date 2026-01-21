@@ -281,19 +281,15 @@ def get_recognizer():
         logger.info("Loading models...")
         from ml_ops.model import LicensePlateRecognizer
 
-        detector_weights = Path("models/detector/best.pt")
-        ocr_checkpoint = Path("models/ocr/last.ckpt")
+        detector_weights = Path("models/yolo_best.pth")
+        ocr_weights = Path("models/ocr_best.pth")
 
-        if not detector_weights.exists():
-            detector_weights = "yolov8n.pt"
-        else:
-            detector_weights = str(detector_weights)
-
-        ocr_ckpt = str(ocr_checkpoint) if ocr_checkpoint.exists() else None
+        detector_weights_str = str(detector_weights) if detector_weights.exists() else "yolov8n.pt"
+        ocr_weights_str = str(ocr_weights) if ocr_weights.exists() else None
 
         recognizer = LicensePlateRecognizer(
-            detector_weights=detector_weights,
-            ocr_checkpoint=ocr_ckpt,
+            detector_weights=detector_weights_str,
+            ocr_weights=ocr_weights_str,
         )
         logger.info("Models loaded")
     return recognizer

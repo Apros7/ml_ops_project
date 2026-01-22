@@ -586,7 +586,11 @@ Yes, we wrote unit tests for the FastAPI endpoints using pytest and FastAPI’s 
 >
 > Answer:
 
---- question 26 fill here ---
+Yes, we successfully implemented monitoring for our deployed model using Google Cloud Monitoring with Cloud Run. A custom dashboard was created in the Google Cloud Console to visualize key infrastructure-level metrics for the backend inference service.
+
+The dashboard includes container CPU utilization and container memory utilization, which allow us to monitor computational load and memory consumption during model inference. This is important for detecting resource bottlenecks and ensuring the model runs within the allocated limits. Additionally, we monitor the Cloud Run request count to observe traffic patterns and verify that the service scales correctly when requests are received. Finally, request latency is tracked to evaluate inference performance and responsiveness, which directly impacts user experience.
+
+Together, these four metrics provide real-time insight into the health, performance, and scalability of the deployed model. This monitoring setup enables early detection of performance degradation or abnormal behavior and supports the long-term reliability and maintainability of the application.
 
 ## Overall discussion of project
 

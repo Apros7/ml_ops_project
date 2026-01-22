@@ -401,6 +401,19 @@ This will build, tag, push and run the images.
 
 One of the Dockerfiles is here: [dockerfiles/train.dockerfile](dockerfiles/train.dockerfile).
 
+Additionally you can run the docker images directly locally or in cloud and do the same thing (as the training image entrypoint is uv run -m ml_ops.train):
+
+Example training run (persist outputs via volume mounts):
+```bash
+docker run --rm -v "$PWD/runs:/app/runs" -v "$PWD/models:/app/models" train:latest train-both data/ccpd_tiny
+```
+
+Example API run:
+```bash
+docker run --rm -p 8080:8080 api:latest
+```
+
+We also use Hydra overrides inside the container to enable features like distributed training (via `torchrun`) and optional OCR quantization (`model.ocr.easyocr.quantize=true`), although we havent used the later that much, as the speedup was pretty insignificant and made everything feel less stable.
 
 ### Question 16
 

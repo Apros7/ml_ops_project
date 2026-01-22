@@ -103,16 +103,16 @@ will check the repositories and the code to verify your answers.
 * [ ] Instrument your API with a couple of system metrics (M28)
 * [ ] Setup cloud monitoring of your instrumented application (M28)
 * [ ] Create one or more alert systems in GCP to alert you if your app is not behaving correctly (M28)
-* [ ] If applicable, optimize the performance of your data loading using distributed data loading (M29)
-* [ ] If applicable, optimize the performance of your training pipeline by using distributed training (M30)
-* [ ] Play around with quantization, compilation and pruning for you trained models to increase inference speed (M31)
+* [x] If applicable, optimize the performance of your data loading using distributed data loading (M29)
+* [x] If applicable, optimize the performance of your training pipeline by using distributed training (M30)
+* [x] Play around with quantization, compilation and pruning for you trained models to increase inference speed (M31)
 
 ### Extra
 
-* [ ] Write some documentation for your application (M32)
+* [x] Write some documentation for your application (M32)
 * [x] Publish the documentation to GitHub Pages (M32)
 * [ ] Revisit your initial project description. Did the project turn out as you wanted?
-* [ ] Create an architectural diagram over your MLOps pipeline
+* [x] Create an architectural diagram over your MLOps pipeline
 * [x] Make sure all group members have an understanding about all parts of the project
 * [x] Uploaded all your code to GitHub
 
@@ -340,7 +340,15 @@ uv run python -m ml_ops.train train-detector data/ccpd_tiny \
 >
 > Answer:
 
---- question 13 fill here ---
+We ensured reproducibility by versioning inputs, pinning the environment, and logging outputs. Experiments are
+configured via Hydra YAML configs in `configs/` and overrides passed on the CLI; the chosen hyperparameters are stored
+in the W&B run config together with metrics. Each training run also writes artifacts locally under `runs/` (Ultralytics
+`results.csv`/plots for detection, PyTorch Lightning CSV logs + checkpoints for OCR) and we copy the best weights into
+`models/` (`yolo_best.pt`, `ocr_best.pth`). The dataset is tracked with DVC (`data.dvc`) and stored in a GCS remote, so
+`uv run dvc pull` retrieves the exact data/splits used. Dependencies are locked via `pyproject.toml` + `uv.lock`, and
+we provide Docker images for identical execution in CI/GCP. To reproduce a run: checkout the same git commit, run
+`uv run dvc pull`, then rerun `uv run python -m ml_ops.train ...` with the same Hydra overrides (available from the W&B
+run page).
 
 ### Question 14
 
@@ -357,10 +365,18 @@ uv run python -m ml_ops.train train-detector data/ccpd_tiny \
 >
 > Answer:
 
-The first image shows the EasyOCR report on W&B for our best run so far: [EasyOCR W&B Report Image](figures/easyocr-results.png).
-The second image shows the tracking of our detection run
+The first image shows the EasyOCR report on W&B for our best run so far: ![EasyOCR W&B Report Image](figures/easyocr-results.png).
+The second image shows the tracking of our detection run (yolo) in W&B: ![Yolo W&B Report Image](figures/yolo-results-wandb.png).
+The last image shows the results of one of our detections runs (yolo). This is generated locally, then uploaded to W&B when the training is done: ![Yolo W&B Report Image](figures/yolo-results.png).
 
---- question 14 fill here ---
+Generally, we upload all the useful information to W&B, including configs, training loss(es), val loss(es) and system metrics.
+
+For the OCR model (first image), we track `train_loss` and `val_loss` to verify convergence and detect overfitting (e.g.,training loss dropping while validation loss increases). Because the end goal is correct license plate text, we also log`val_exact_accuracy` (full-string match) and `val_char_accuracy` (character-level accuracy). Exact accuracy is strict and directly reflects real-world usability (a single wrong character makes the prediction unusable), while character accuracy is more sensitive early in training and helps debug whether the model is “almost correct” vs. completely failing.
+
+For the detector (second and third images), we track the Ultralytics/YOLO loss components (`train/box_loss`, `train/cls_loss`, `train/dfl_loss` and their validation counterparts) to ensure stable optimization. In addition, we log task metrics such as `metrics/precision(B)` and `metrics/recall(B)` to understand the trade-off between false positives and false negatives, which is important because missed plates break the OCR pipeline, while too many false detections increase downstream cost and produces weird results for the end user. Finally, we track `metrics/mAP50(B)` and `metrics/mAP50-95(B)` to summarize detection quality: mAP@0.50 is an easier “did we find the plate” signal, while mAP@0.50:0.95 is stricter and better reflects box quality.
+
+Together with logged configs and system/runtime metrics, this lets us compare runs side-by-side in W&B and reliably pick
+the best checkpoint for deployment.
 
 ### Question 15
 
@@ -385,6 +401,19 @@ This will build, tag, push and run the images.
 
 One of the Dockerfiles is here: [dockerfiles/train.dockerfile](dockerfiles/train.dockerfile).
 
+Additionally you can run the docker images directly locally or in cloud and do the same thing (as the training image entrypoint is uv run -m ml_ops.train):
+
+Example training run (persist outputs via volume mounts):
+```bash
+docker run --rm -v "$PWD/runs:/app/runs" -v "$PWD/models:/app/models" train:latest train-both data/ccpd_tiny
+```
+
+Example API run:
+```bash
+docker run --rm -p 8080:8080 api:latest
+```
+
+We also use Hydra overrides inside the container to enable features like distributed training (via `torchrun`) and optional OCR quantization (`model.ocr.easyocr.quantize=true`), although we havent used the later that much, as the speedup was pretty insignificant and made everything feel less stable.
 
 ### Question 16
 
@@ -454,21 +483,21 @@ We did not have the biggest need to use the Compute Engine, since our training w
 ### Question 19
 
 > **Insert 1-2 images of your GCP bucket, such that we can see what data you have stored in it.**
-> **You can take inspiration from [this figure](figures/bucke).**
+> **You can take inspiration from ![this figure](figures/bucke).**
 >
 > Answer:
 
-[Our GCP Buckets](figures/bucket.png)
+![Our GCP Buckets](figures/bucket.png)
 
 ### Question 20
 
 > **Upload 1-2 images of your GCP artifact registry, such that we can see the different docker images that you have**
-> **stored. You can take inspiration from [this figure](figures/registr).**
+> **stored. You can take inspiration from ![this figure](figures/registr).**
 >
 > Answer:
 
-[Artifact registry](figures/registry.png)
-[Container registry](figures/registry2.png)
+![Artifact registry](figures/registry.png)
+![Container registry](figures/registry2.png)
 
 ### Question 21
 
@@ -479,7 +508,7 @@ We did not have the biggest need to use the Compute Engine, since our training w
 
 This is our cloud build history.
 
-[Cloud Build History](figures/build.png)
+![Cloud Build History](figures/build.png)
 
 ### Question 22
 
@@ -494,7 +523,7 @@ This is our cloud build history.
 >
 > Answer:
 
-Yes, we ran a small sample training in the Compute Engine. We did this by creating a VM and a train container. Afterwards we ran the container with the VM. We choose to bake some training images and train on them. We also tried using vertex AI, and actually have set it up, so you can start a training job using vertex AI. However we found that Vertex is easier getting started with, but more difficult to debug when things go wrong - which they often do when working in the cloud.
+Yes, we ran a small sample training in the Compute Engine. We did this by creating a VM and a train container. Afterwards we ran the container with the VM. We choose to bake some training images and train on them. We also tried using vertex AI, and actually have set it up, so you can start a training job using vertex AI. However we found that Vertex is easier getting started with, but more difficult to debug when things go wrong - which they often do when working in the cloud, so we decided to keep using Compute Engine as we had many issues setting up and having more control in Compute Engine helped us better solve those issues.
 
 ## Deployment
 
@@ -609,7 +638,28 @@ We implemented a simple frontend for the API to make demos and manual testing ea
 >
 > Answer:
 
---- question 29 fill here ---
+![mlops_architecture](figures/mlops_architecture.png)
+
+Our system consists of a data + training pipeline and a serving stack. For data, we use two public sources (CCPD and an
+ALPR dataset from Kaggle). We keep the dataset versioned with DVC by tracking the full `data/` directory (`data.dvc`) and
+storing the remote cache in a Google Cloud Storage bucket (`gs://ccpd_base`). This means both local development and cloud
+jobs can reproduce the exact same dataset version by running `dvc pull`.
+
+For code and automation, the repository contains the full training, evaluation, and serving code (under `src/ml_ops/`)
+plus Hydra configuration presets (under `configs/`). When we push changes to GitHub, a GitHub Actions workflow runs our
+test suite (pytest + coverage) across multiple OS/Python/PyTorch versions and pulls the DVC-tracked dataset to validate
+the data utilities and model code.
+
+For cloud training, we containerize the training entrypoint (`ml_ops.train`) and publish the `train` image to Artifact
+Registry. A Vertex AI Custom Job (submitted via Cloud Build) starts the container, runs `dvc pull`, and executes
+`ml_ops.train train-both` (YOLO detector + OCR training) using our Hydra configs. During training we log metrics and
+artifacts to Weights & Biases, and we export the best weights into the project’s `models/` folder
+(`models/yolo_best.pt` and `models/ocr_best.pth`).
+
+For serving, we build an API container that bundles the code and model weights. The FastAPI backend exposes `/detect` and
+`/recognize` endpoints and is deployed to Cloud Run. A Streamlit frontend provides a simple UI that uploads images,
+invokes the API, and displays annotated predictions. For monitoring, the backend exposes Prometheus-style metrics at
+`/metrics`, which we also surface in the UI as basic system-load and request counters.
 
 ### Question 30
 

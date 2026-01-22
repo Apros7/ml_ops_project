@@ -1,6 +1,7 @@
 """Training scripts for license plate detection and OCR."""
 
 import csv
+import os
 import shutil
 from functools import partial
 from pathlib import Path
@@ -15,7 +16,7 @@ from pytorch_lightning.loggers import CSVLogger, WandbLogger
 import wandb
 from hydra import compose, initialize_config_dir
 from hydra.core.global_hydra import GlobalHydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, ListConfig
 from loguru import logger
 
 from ml_ops.model import PlateDetector, PlateOCR
@@ -83,6 +84,33 @@ def _finish_wandb_run(active: bool) -> None:
 
     if active:
         wandb.finish()
+
+
+def _get_torchrun_env() -> tuple[int, int, int]:
+    """Read torchrun environment variables for distributed training.
+
+    Returns:
+        Tuple of (rank, world_size, local_rank).
+    """
+    rank = int(os.environ.get("RANK", "0"))
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    return rank, world_size, local_rank
+
+
+def _resolve_distributed_backend(backend: str, device: torch.device) -> str:
+    """Resolve a torch.distributed backend name.
+
+    Args:
+        backend: Configured backend name ('auto', 'nccl', 'gloo', ...).
+        device: Target device for training.
+
+    Returns:
+        Resolved backend string.
+    """
+    if backend == "auto":
+        return "nccl" if device.type == "cuda" else "gloo"
+    return backend
 
 
 def _log_yolo_results_to_wandb(results_file: Path) -> None:
@@ -300,7 +328,9 @@ def _train_easyocr_with_cfg(
     Returns:
         Tuple of (project_path, experiment_name).
     """
+    from torch.nn.parallel import DistributedDataParallel
     from torch.utils.data import DataLoader
+    from torch.utils.data.distributed import DistributedSampler
     from easyocr.model.vgg_model import Model as EasyOCRVGGModel
     from easyocr.utils import CTCLabelConverter
 
@@ -308,6 +338,15 @@ def _train_easyocr_with_cfg(
     training_cfg = cfg.training.ocr
     model_cfg = cfg.model.ocr
     wandb_cfg = cfg.wandb_configs
+    easyocr_cfg = model_cfg.get("easyocr") or {}
+    quantize_on_load = bool(easyocr_cfg.get("quantize", False))
+    quantize_dtype_cfg = str(easyocr_cfg.get("quantize_dtype", "qint8"))
+
+    distributed_cfg = training_cfg.get("distributed") or {}
+    distributed_enabled = bool(distributed_cfg.get("enabled", False))
+    rank, world_size, local_rank = _get_torchrun_env()
+    use_ddp = distributed_enabled and world_size > 1
+    is_main_process = rank == 0
 
     resolved_data_dir = _normalize_path(data_dir) or _normalize_path(data_cfg.get("data_dir")) or PROJECT_ROOT / "data"
     resolved_split_dir = _normalize_path(split_dir) or _normalize_path(data_cfg.get("split_dir"))
@@ -366,32 +405,55 @@ def _train_easyocr_with_cfg(
         english_only=english_only_value,
     )
 
+    if torch.cuda.is_available():
+        if use_ddp:
+            torch.cuda.set_device(local_rank)
+            device = torch.device(f"cuda:{local_rank}")
+        else:
+            device = torch.device("cuda")
+        if is_main_process:
+            device_name = torch.cuda.get_device_name(device.index or 0)
+            logger.info(f"Using CUDA for EasyOCR fine-tuning: {device_name}")
+    elif torch.backends.mps.is_available():
+        device = torch.device("cpu")
+        if is_main_process:
+            logger.warning("MPS is available, but CTCLoss is not supported on MPS. Using CPU for EasyOCR fine-tuning.")
+    else:
+        device = torch.device("cpu")
+        if is_main_process:
+            logger.info("Using CPU for EasyOCR fine-tuning.")
+
+    if use_ddp:
+        if not torch.distributed.is_available():
+            raise RuntimeError("torch.distributed is not available, but distributed training was enabled.")
+        backend_cfg = str(distributed_cfg.get("backend", "auto"))
+        backend = _resolve_distributed_backend(backend_cfg, device)
+        if not torch.distributed.is_initialized():
+            torch.distributed.init_process_group(backend=backend, init_method="env://")
+        if is_main_process:
+            logger.info(f"Distributed EasyOCR training enabled (world_size={world_size}, backend={backend}).")
+
+    train_sampler = DistributedSampler(train_dataset, shuffle=True) if use_ddp else None
+    val_sampler = DistributedSampler(val_dataset, shuffle=False) if use_ddp else None
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size_value,
-        shuffle=True,
+        shuffle=train_sampler is None,
+        sampler=train_sampler,
         num_workers=num_workers_value,
-        pin_memory=True,
+        pin_memory=(device.type == "cuda"),
         collate_fn=partial(_easyocr_collate_fn, english_only=english_only_value),
     )
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size_value,
         shuffle=False,
+        sampler=val_sampler,
         num_workers=num_workers_value,
-        pin_memory=True,
+        pin_memory=(device.type == "cuda"),
         collate_fn=partial(_easyocr_collate_fn, english_only=english_only_value),
     )
-
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-        logger.info(f"Using CUDA for EasyOCR fine-tuning: {torch.cuda.get_device_name(0)}")
-    elif torch.backends.mps.is_available():
-        device = torch.device("cpu")
-        logger.warning("MPS is available, but CTCLoss is not supported on MPS. Using CPU for EasyOCR fine-tuning.")
-    else:
-        device = torch.device("cpu")
-        logger.info("Using CPU for EasyOCR fine-tuning.")
 
     character_list = _build_easyocr_character_list(english_only=english_only_value)
     converter = CTCLabelConverter(character_list)
@@ -404,27 +466,35 @@ def _train_easyocr_with_cfg(
         num_class=num_class,
     ).to(device)
 
+    if use_ddp:
+        ddp_kwargs: dict[str, Any] = {"device_ids": [local_rank]} if device.type == "cuda" else {}
+        model = DistributedDataParallel(model, **ddp_kwargs)
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate_value, weight_decay=1e-4)
     criterion = torch.nn.CTCLoss(blank=0, zero_infinity=True)
 
-    wandb_active = _start_wandb_run(
-        wandb_cfg,
-        name=f"easyocr-{experiment_name}",
-        metadata={
-            "architecture": "EasyOCR-VGG",
-            "task": "OCR",
-            "english_only": english_only_value,
-            "img_height": img_height_value,
-            "img_width": img_width_value,
-            "hidden_size": hidden_size_value,
-            "output_channel": output_channel_value,
-            "learning_rate": learning_rate_value,
-            "batch_size": batch_size_value,
-            "max_epochs": max_epochs_value,
-            "max_train_images": max_train_images,
-            "max_val_images": max_val_images,
-            "dataset": data_cfg.get("name", "CCPD"),
-        },
+    wandb_active = (
+        _start_wandb_run(
+            wandb_cfg,
+            name=f"easyocr-{experiment_name}",
+            metadata={
+                "architecture": "EasyOCR-VGG",
+                "task": "OCR",
+                "english_only": english_only_value,
+                "img_height": img_height_value,
+                "img_width": img_width_value,
+                "hidden_size": hidden_size_value,
+                "output_channel": output_channel_value,
+                "learning_rate": learning_rate_value,
+                "batch_size": batch_size_value,
+                "max_epochs": max_epochs_value,
+                "max_train_images": max_train_images,
+                "max_val_images": max_val_images,
+                "dataset": data_cfg.get("name", "CCPD"),
+            },
+        )
+        if is_main_process
+        else False
     )
 
     best_val_exact = -1.0
@@ -436,10 +506,13 @@ def _train_easyocr_with_cfg(
 
     best_local_path = experiment_dir / "ocr_best.pth"
 
-    if not early_stopping_enabled:
+    if is_main_process and not early_stopping_enabled:
         logger.info("Early stopping disabled for OCR training (patience <= 0).")
 
     for epoch in range(max_epochs_value):
+        if use_ddp and train_sampler is not None:
+            train_sampler.set_epoch(epoch)
+
         model.train()
         train_loss_sum = 0.0
         train_batches = 0
@@ -449,6 +522,7 @@ def _train_easyocr_with_cfg(
             desc=f"Epoch {epoch + 1}/{max_epochs_value} [train]",
             unit="batch",
             leave=False,
+            disable=not is_main_process,
         )
         for batch in train_bar:
             images = batch["images"].to(device, non_blocking=(device.type == "cuda"))
@@ -484,6 +558,12 @@ def _train_easyocr_with_cfg(
             train_batches += 1
             train_bar.set_postfix(loss=loss_value, avg=train_loss_sum / train_batches)
 
+        if use_ddp:
+            train_stats = torch.tensor([train_loss_sum, float(train_batches)], device=device, dtype=torch.float64)
+            torch.distributed.all_reduce(train_stats, op=torch.distributed.ReduceOp.SUM)
+            train_loss_sum = float(train_stats[0].item())
+            train_batches = int(train_stats[1].item())
+
         train_loss = train_loss_sum / max(train_batches, 1)
 
         model.eval()
@@ -499,6 +579,7 @@ def _train_easyocr_with_cfg(
                 desc=f"Epoch {epoch + 1}/{max_epochs_value} [val]",
                 unit="batch",
                 leave=False,
+                disable=not is_main_process,
             )
             for batch in val_bar:
                 images = batch["images"].to(device, non_blocking=(device.type == "cuda"))
@@ -541,15 +622,29 @@ def _train_easyocr_with_cfg(
                     exact=(exact / total) if total else 0.0,
                 )
 
+        if use_ddp:
+            val_stats = torch.tensor(
+                [val_loss_sum, float(val_batches), float(total), float(exact), char_acc_sum],
+                device=device,
+                dtype=torch.float64,
+            )
+            torch.distributed.all_reduce(val_stats, op=torch.distributed.ReduceOp.SUM)
+            val_loss_sum = float(val_stats[0].item())
+            val_batches = int(val_stats[1].item())
+            total = int(val_stats[2].item())
+            exact = int(val_stats[3].item())
+            char_acc_sum = float(val_stats[4].item())
+
         val_loss = val_loss_sum / max(val_batches, 1)
         val_exact = exact / total if total > 0 else 0.0
         val_char = char_acc_sum / total if total > 0 else 0.0
 
-        logger.info(
-            f"Epoch {epoch+1}/{max_epochs_value} | "
-            f"train_loss={train_loss:.4f} | val_loss={val_loss:.4f} | "
-            f"val_exact={val_exact:.4f} | val_char={val_char:.4f}"
-        )
+        if is_main_process:
+            logger.info(
+                f"Epoch {epoch+1}/{max_epochs_value} | "
+                f"train_loss={train_loss:.4f} | val_loss={val_loss:.4f} | "
+                f"val_exact={val_exact:.4f} | val_char={val_char:.4f}"
+            )
 
         if wandb_active:
             wandb.log(
@@ -566,37 +661,47 @@ def _train_easyocr_with_cfg(
         if val_exact > best_val_exact:
             best_val_exact = val_exact
             epochs_no_improve = 0
-
-            state_dict = {f"module.{k}": v.detach().cpu() for k, v in model.state_dict().items()}
-            payload = {
-                "state_dict": state_dict,
-                "network_params": {
-                    "input_channel": 1,
-                    "output_channel": output_channel_value,
-                    "hidden_size": hidden_size_value,
-                },
-                "characters": character_list,
-                "img_height": img_height_value,
-                "img_width": img_width_value,
-                "english_only": english_only_value,
-            }
-            torch.save(payload, best_local_path)
-            logger.info(f"New best EasyOCR checkpoint saved: {best_local_path} (val_exact={best_val_exact:.4f})")
+            if is_main_process:
+                model_to_save = model.module if use_ddp else model
+                raw_state_dict = model_to_save.state_dict()
+                state_dict = {f"module.{k}": v.detach().cpu() for k, v in raw_state_dict.items()}
+                payload = {
+                    "state_dict": state_dict,
+                    "network_params": {
+                        "input_channel": 1,
+                        "output_channel": output_channel_value,
+                        "hidden_size": hidden_size_value,
+                    },
+                    "characters": character_list,
+                    "img_height": img_height_value,
+                    "img_width": img_width_value,
+                    "english_only": english_only_value,
+                    "quantize": quantize_on_load,
+                    "quantize_dtype": quantize_dtype_cfg,
+                }
+                torch.save(payload, best_local_path)
+                logger.info(f"New best EasyOCR checkpoint saved: {best_local_path} (val_exact={best_val_exact:.4f})")
         else:
             epochs_no_improve += 1
             if early_stopping_enabled and epochs_no_improve >= patience:
-                logger.info(f"Early stopping triggered (patience={patience}). Best val_exact={best_val_exact:.4f}")
+                if is_main_process:
+                    logger.info(f"Early stopping triggered (patience={patience}). Best val_exact={best_val_exact:.4f}")
                 break
 
     _finish_wandb_run(wandb_active)
 
-    if best_local_path.exists():
-        _export_best_model(best_local_path, MODELS_DIR / "ocr_best.pth")
-    else:
-        logger.warning("No EasyOCR best checkpoint found to export.")
+    if is_main_process:
+        if best_local_path.exists():
+            _export_best_model(best_local_path, MODELS_DIR / "ocr_best.pth")
+        else:
+            logger.warning("No EasyOCR best checkpoint found to export.")
 
-    logger.info(f"\nTraining complete! Results saved to {experiment_dir}")
-    logger.info(f"  - Best OCR weights: {MODELS_DIR / 'ocr_best.pth'}")
+        logger.info(f"\nTraining complete! Results saved to {experiment_dir}")
+        logger.info(f"  - Best OCR weights: {MODELS_DIR / 'ocr_best.pth'}")
+
+    if use_ddp and torch.distributed.is_initialized():
+        torch.distributed.barrier()
+        torch.distributed.destroy_process_group()
 
     return project_path, experiment_name
 
@@ -740,8 +845,15 @@ names:
         pretrained=bool(model_cfg.get("pretrained", True)),
     )
 
-    accelerator, _ = get_accelerator()
-    device = 0 if accelerator == "gpu" else "cpu"
+    device_cfg = training_cfg.get("device")
+    if device_cfg is None:
+        accelerator, _ = get_accelerator()
+        device = "0" if accelerator == "gpu" else "cpu"
+    else:
+        if isinstance(device_cfg, (list, ListConfig)):
+            device = ",".join(str(v) for v in device_cfg)
+        else:
+            device = str(device_cfg)
 
     detector.train_yolo(
         data_yaml=str(data_yaml_path),
@@ -947,6 +1059,10 @@ def _train_ocr_with_cfg(
     if force_cpu:
         logger.warning("Note: Using CPU for OCR training (CTC loss not supported on MPS)")
 
+    distributed_cfg = training_cfg.get("distributed") or {}
+    strategy_value = str(distributed_cfg.get("strategy", "auto"))
+    use_distributed_sampler = bool(distributed_cfg.get("use_distributed_sampler", True))
+
     precision_cfg = training_cfg.get("precision", "auto")
     precision_value = "16-mixed" if precision_cfg == "auto" and accelerator == "gpu" else precision_cfg
     if precision_value == "auto":
@@ -955,11 +1071,13 @@ def _train_ocr_with_cfg(
     trainer = pl.Trainer(
         accelerator=accelerator,
         devices=devices,
+        strategy=strategy_value,
         max_epochs=max_epochs_value,
         callbacks=callbacks,
         logger=loggers,
         precision=precision_value,
         gradient_clip_val=training_cfg.get("gradient_clip_val", 5.0),
+        use_distributed_sampler=use_distributed_sampler,
         log_every_n_steps=10,
     )
 

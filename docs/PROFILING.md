@@ -73,7 +73,7 @@ ENABLE_PROFILING=true uv run python -m ml_ops.train train-ocr data/ccpd_small -o
 
 ```bash
 # Profile data export
-ENABLE_PROFILING=true uv run python -m ml_ops.data preprocess data/raw data/processed
+ENABLE_PROFILING=true uv run python -m ml_ops.data data/raw data/processed
 ```
 
 ### View PyTorch Profiler Results

@@ -16,16 +16,18 @@ class LicensePlateAPIUser(HttpUser):
     def on_start(self) -> None:
         """Load test images on user start."""
         self.test_images: list[bytes] = []
-        
+
         data_dir = Path("data/ccpd_tiny/val")
         if data_dir.exists():
             image_files = list(data_dir.glob("*.jpg"))[:10]
             if image_files:
                 self.test_images = [img_path.read_bytes() for img_path in image_files]
-        
+
         if not self.test_images:
             for _ in range(10):
-                img = Image.new("RGB", (640, 480), color=(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
+                img = Image.new(
+                    "RGB", (640, 480), color=(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+                )
                 img_bytes = io.BytesIO()
                 img.save(img_bytes, format="JPEG")
                 self.test_images.append(img_bytes.getvalue())
@@ -35,11 +37,11 @@ class LicensePlateAPIUser(HttpUser):
         """POST random image to /recognize endpoint."""
         if not self.test_images:
             return
-        
+
         image_bytes = random.choice(self.test_images)
         files = {"file": ("test.jpg", io.BytesIO(image_bytes), "image/jpeg")}
         data = {"conf_threshold": 0.25}
-        
+
         with self.client.post("/recognize", files=files, data=data, catch_response=True) as response:
             if response.status_code == 200:
                 result = response.json()
@@ -55,11 +57,11 @@ class LicensePlateAPIUser(HttpUser):
         """POST random image to /detect endpoint."""
         if not self.test_images:
             return
-        
+
         image_bytes = random.choice(self.test_images)
         files = {"file": ("test.jpg", io.BytesIO(image_bytes), "image/jpeg")}
         data = {"conf_threshold": 0.25}
-        
+
         with self.client.post("/detect", files=files, data=data, catch_response=True) as response:
             if response.status_code == 200:
                 result = response.json()

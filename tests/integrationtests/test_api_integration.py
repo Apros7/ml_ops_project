@@ -25,7 +25,7 @@ def sample_image() -> bytes:
         image_files = list(data_dir.glob("*.jpg"))
         if image_files:
             return image_files[0].read_bytes()
-    
+
     img = Image.new("RGB", (640, 480), color="white")
     img_bytes = io.BytesIO()
     img.save(img_bytes, format="JPEG")
@@ -74,7 +74,7 @@ def test_recognize_valid_image(client: TestClient, sample_image: bytes) -> None:
     files = {"file": ("test.jpg", io.BytesIO(sample_image), "image/jpeg")}
     data = {"conf_threshold": 0.25}
     response = client.post("/recognize", files=files, data=data)
-    
+
     assert response.status_code == 200
     result = response.json()
     assert "success" in result
@@ -90,7 +90,7 @@ def test_recognize_empty_image(client: TestClient, empty_image: bytes) -> None:
     files = {"file": ("empty.jpg", io.BytesIO(empty_image), "image/jpeg")}
     data = {"conf_threshold": 0.25}
     response = client.post("/recognize", files=files, data=data)
-    
+
     assert response.status_code == 200
     result = response.json()
     assert result["success"] is True
@@ -103,7 +103,7 @@ def test_detect_endpoint(client: TestClient, sample_image: bytes) -> None:
     files = {"file": ("test.jpg", io.BytesIO(sample_image), "image/jpeg")}
     data = {"conf_threshold": 0.25}
     response = client.post("/detect", files=files, data=data)
-    
+
     assert response.status_code == 200
     result = response.json()
     assert "success" in result
@@ -117,7 +117,7 @@ def test_detect_endpoint(client: TestClient, sample_image: bytes) -> None:
 def test_confidence_threshold(client: TestClient, sample_image: bytes) -> None:
     """Test different threshold values (0.1, 0.5, 0.9)."""
     files = {"file": ("test.jpg", io.BytesIO(sample_image), "image/jpeg")}
-    
+
     for threshold in [0.1, 0.5, 0.9]:
         data = {"conf_threshold": threshold}
         response = client.post("/recognize", files=files, data=data)
@@ -132,7 +132,7 @@ def test_invalid_file_type(client: TestClient, invalid_file: bytes) -> None:
     files = {"file": ("test.txt", io.BytesIO(invalid_file), "text/plain")}
     data = {"conf_threshold": 0.25}
     response = client.post("/recognize", files=files, data=data)
-    
+
     assert response.status_code == 400
     assert "File must be an image" in response.json()["detail"]
 
@@ -141,24 +141,24 @@ def test_missing_file(client: TestClient) -> None:
     """Test that sending request without file returns 422."""
     data = {"conf_threshold": 0.25}
     response = client.post("/recognize", data=data)
-    
+
     assert response.status_code == 422
 
 
 def test_concurrent_requests(client: TestClient, sample_image: bytes) -> None:
     """Test sending 10 requests simultaneously, all should succeed."""
     import concurrent.futures
-    
+
     def make_request() -> tuple[int, dict]:
         files = {"file": ("test.jpg", io.BytesIO(sample_image), "image/jpeg")}
         data = {"conf_threshold": 0.25}
         response = client.post("/recognize", files=files, data=data)
         return response.status_code, response.json()
-    
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(make_request) for _ in range(10)]
         results = [future.result() for future in concurrent.futures.as_completed(futures)]
-    
+
     assert len(results) == 10
     for status_code, result in results:
         assert status_code == 200
@@ -170,10 +170,10 @@ def test_response_structure(client: TestClient, sample_image: bytes) -> None:
     files = {"file": ("test.jpg", io.BytesIO(sample_image), "image/jpeg")}
     data = {"conf_threshold": 0.25}
     response = client.post("/recognize", files=files, data=data)
-    
+
     assert response.status_code == 200
     result = response.json()
-    
+
     if result["num_plates"] > 0:
         for plate in result["plates"]:
             assert "bbox" in plate

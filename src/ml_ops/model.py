@@ -876,8 +876,14 @@ class LicensePlateRecognizer:
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        target_h = img_height or getattr(self.ocr, "img_height", None) or getattr(self.ocr, "hparams", {}).get("img_height", 32)
-        target_w = img_width or getattr(self.ocr, "img_width", None) or getattr(self.ocr, "hparams", {}).get("img_width", 200)
+        target_h = (
+            img_height
+            or getattr(self.ocr, "img_height", None)
+            or getattr(self.ocr, "hparams", {}).get("img_height", 32)
+        )
+        target_w = (
+            img_width or getattr(self.ocr, "img_width", None) or getattr(self.ocr, "hparams", {}).get("img_width", 200)
+        )
 
         recognitions = []
         for result in results:

@@ -557,7 +557,7 @@ Yes. We implemented a FastAPI service that loads the detector and OCR models onc
 >
 > Answer:
 
---- question 24 fill here ---
+Yes. We deployed the FastAPI API to Google Cloud Platform using Cloud Run. The API is containerized with Docker using `api.dockerfile`, which builds a FastAPI service. We pushed the container image and deployed it as a Cloud Run service. To invoke the deployed API, users can send POST requests: `curl -X POST -F "file=@image.jpg" -F "conf_threshold=0.25"` or use the UI also hosted in cloud. The API returns JSON responses with detected license plates, bounding boxes, confidence scores, and recognized text.
 
 ### Question 25
 

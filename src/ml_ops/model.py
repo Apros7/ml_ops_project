@@ -1,6 +1,7 @@
 """Models for license plate detection and OCR."""
 
 from pathlib import Path
+from shutil import copyfile
 
 import matplotlib.pyplot as plt
 import torch
@@ -591,6 +592,195 @@ class PlateOCR(pl.LightningModule):
         return optimizer
 
 
+class BidirectionalLSTM(nn.Module):
+    """Bidirectional LSTM with a linear projection.
+
+    This matches the common CRNN-style OCR implementation where each LSTM block is:
+    LSTM(bidirectional) -> Linear(hidden*2 -> out).
+    """
+
+    def __init__(self, input_size: int, hidden_size: int, output_size: int) -> None:
+        """Initialize the bidirectional LSTM block.
+
+        Args:
+            input_size: Input feature size per timestep.
+            hidden_size: Hidden size for the LSTM (per direction).
+            output_size: Output feature size per timestep after the linear projection.
+        """
+        super().__init__()
+        self.rnn = nn.LSTM(input_size, hidden_size, bidirectional=True, batch_first=True)
+        self.linear = nn.Linear(hidden_size * 2, output_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+            x: Input tensor of shape (batch, time, input_size).
+
+        Returns:
+            Output tensor of shape (batch, time, output_size).
+        """
+        recurrent, _ = self.rnn(x)
+        return self.linear(recurrent)
+
+
+class VGGFeatureExtractor(nn.Module):
+    """VGG-style feature extractor matching the pretrained OCR `.pth` weights."""
+
+    def __init__(self, input_channel: int = 1, output_channel: int = 256) -> None:
+        """Initialize the feature extractor.
+
+        Args:
+            input_channel: Number of input image channels.
+            output_channel: Number of output feature channels.
+        """
+        super().__init__()
+        self.ConvNet = nn.Sequential(
+            nn.Conv2d(input_channel, output_channel // 8, 3, 1, 1),  # 0: 1 -> 32 (for output_channel=256)
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(output_channel // 8, output_channel // 4, 3, 1, 1),  # 3: 32 -> 64
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(output_channel // 4, output_channel // 2, 3, 1, 1),  # 6: 64 -> 128
+            nn.ReLU(inplace=True),
+            nn.Conv2d(output_channel // 2, output_channel // 2, 3, 1, 1),  # 8: 128 -> 128
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d((2, 1), (2, 1)),
+            nn.Conv2d(output_channel // 2, output_channel, 3, 1, 1, bias=False),  # 11: 128 -> 256
+            nn.BatchNorm2d(output_channel),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(output_channel, output_channel, 3, 1, 1, bias=False),  # 14: 256 -> 256
+            nn.BatchNorm2d(output_channel),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d((2, 1), (2, 1)),
+            nn.Conv2d(output_channel, output_channel, 2, 1, 0),  # 18: 256 -> 256
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Extract features from an input image tensor."""
+        return self.ConvNet(x)
+
+
+class PretrainedPlateOCR(nn.Module):
+    """OCR model loader for the packaged `models/ocr_best.pth` weights (CTC-based)."""
+
+    def __init__(
+        self,
+        characters: str,
+        img_height: int = 32,
+        img_width: int = 200,
+        input_channel: int = 1,
+        output_channel: int = 256,
+        hidden_size: int = 256,
+    ) -> None:
+        """Initialize a CRNN-style OCR model.
+
+        Args:
+            characters: String of supported characters in index order (excluding blank).
+            img_height: Expected input height.
+            img_width: Expected input width.
+            input_channel: Number of input channels (1 for grayscale).
+            output_channel: Feature extractor output channels.
+            hidden_size: LSTM hidden size per direction.
+        """
+        super().__init__()
+        self.characters = characters
+        self.img_height = img_height
+        self.img_width = img_width
+        self.input_channel = input_channel
+        self.output_channel = output_channel
+        self.hidden_size = hidden_size
+
+        self.FeatureExtraction = VGGFeatureExtractor(input_channel=input_channel, output_channel=output_channel)
+        self.SequenceModeling = nn.Sequential(
+            BidirectionalLSTM(output_channel, hidden_size, hidden_size),
+            BidirectionalLSTM(hidden_size, hidden_size, hidden_size),
+        )
+        self.Prediction = nn.Linear(hidden_size, len(characters) + 1)
+
+    @classmethod
+    def from_pth(cls, weights_path: str, map_location: str = "cpu") -> "PretrainedPlateOCR":
+        """Load a pretrained OCR model from a `.pth` file.
+
+        Args:
+            weights_path: Path to `.pth` weights file.
+            map_location: Torch map_location for loading.
+
+        Returns:
+            A `PretrainedPlateOCR` instance with loaded weights.
+        """
+        ckpt = torch.load(weights_path, map_location=map_location)
+        if not isinstance(ckpt, dict):
+            raise ValueError(f"Unsupported OCR weights format in: {weights_path}")
+
+        characters = ckpt.get("characters", "")
+        if not isinstance(characters, str) or not characters:
+            raise ValueError("OCR weights missing `characters` string.")
+
+        img_height = int(ckpt.get("img_height", 32))
+        img_width = int(ckpt.get("img_width", 200))
+        network_params = ckpt.get("network_params", {}) if isinstance(ckpt.get("network_params", {}), dict) else {}
+
+        input_channel = int(network_params.get("input_channel", 1))
+        output_channel = int(network_params.get("output_channel", 256))
+        hidden_size = int(network_params.get("hidden_size", 256))
+
+        model = cls(
+            characters=characters,
+            img_height=img_height,
+            img_width=img_width,
+            input_channel=input_channel,
+            output_channel=output_channel,
+            hidden_size=hidden_size,
+        )
+
+        state_dict = ckpt.get("state_dict", ckpt)
+        if not isinstance(state_dict, dict):
+            raise ValueError("OCR weights missing `state_dict` mapping.")
+
+        cleaned = {k.removeprefix("module."): v for k, v in state_dict.items()}
+        model.load_state_dict(cleaned, strict=True)
+        model.eval()
+        return model
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+            x: Input images of shape (batch, 1, height, width).
+
+        Returns:
+            Logits of shape (batch, time, num_classes_with_blank).
+        """
+        features = self.FeatureExtraction(x)
+        features = features.squeeze(2).permute(0, 2, 1)
+        contextual = self.SequenceModeling(features)
+        return self.Prediction(contextual)
+
+    def decode(self, logits: torch.Tensor) -> list[str]:
+        """Decode logits using greedy CTC decoding.
+
+        Args:
+            logits: Tensor of shape (batch, time, num_classes_with_blank).
+
+        Returns:
+            List of decoded plate strings.
+        """
+        preds = logits.argmax(dim=2).tolist()
+        decoded: list[str] = []
+        for seq in preds:
+            chars: list[str] = []
+            prev = -1
+            for idx in seq:
+                if idx != 0 and idx != prev:
+                    chars.append(self.characters[idx - 1])
+                prev = idx
+            decoded.append("".join(chars))
+        return decoded
+
+
 class LicensePlateRecognizer:
     """End-to-end license plate recognition pipeline.
 
@@ -601,24 +791,52 @@ class LicensePlateRecognizer:
         self,
         detector_weights: str = "yolov8n.pt",
         ocr_checkpoint: str | None = None,
+        ocr_weights: str | None = None,
         device: str = "auto",
     ) -> None:
         """Initialize the recognizer.
 
         Args:
             detector_weights: Path to YOLO detector weights.
-            ocr_checkpoint: Path to OCR model checkpoint.
+            ocr_checkpoint: Path to OCR checkpoint (Lightning `.ckpt`) or pretrained `.pth`.
+            ocr_weights: Path to pretrained OCR `.pth` weights (preferred).
             device: Device to run inference on.
         """
         self.device = self._get_device(device)
 
+        detector_weights = self._ensure_yolo_weights_suffix(detector_weights)
         self.detector = YOLO(detector_weights)
 
-        self.ocr = PlateOCR()
-        if ocr_checkpoint:
-            self.ocr = PlateOCR.load_from_checkpoint(ocr_checkpoint)
-        self.ocr = self.ocr.to(self.device)
+        ocr_path = ocr_weights or ocr_checkpoint
+        if ocr_path and Path(ocr_path).suffix.lower() == ".pth":
+            self.ocr = PretrainedPlateOCR.from_pth(ocr_path).to(self.device)
+        else:
+            self.ocr = PlateOCR()
+            if ocr_path:
+                self.ocr = PlateOCR.load_from_checkpoint(ocr_path)
+            self.ocr = self.ocr.to(self.device)
         self.ocr.eval()
+
+    def _ensure_yolo_weights_suffix(self, weights: str) -> str:
+        """Ensure Ultralytics sees a supported `.pt` suffix for weights.
+
+        Some Ultralytics versions enforce `.pt` at prediction-time even if the
+        file contents are valid with a `.pth` extension.
+        """
+        path = Path(weights)
+        if path.suffix.lower() != ".pth":
+            return weights
+
+        pt_path = path.with_suffix(".pt")
+        if pt_path.exists():
+            return str(pt_path)
+
+        try:
+            copyfile(path, pt_path)
+            return str(pt_path)
+        except OSError as exc:
+            logger.warning(f"Failed to create .pt alias for YOLO weights {path}: {exc}")
+            return weights
 
     def _get_device(self, device: str) -> torch.device:
         """Get the appropriate device.
@@ -658,8 +876,14 @@ class LicensePlateRecognizer:
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        target_h = img_height or getattr(self.ocr, "hparams", {}).get("img_height", 32)
-        target_w = img_width or getattr(self.ocr, "hparams", {}).get("img_width", 200)
+        target_h = (
+            img_height
+            or getattr(self.ocr, "img_height", None)
+            or getattr(self.ocr, "hparams", {}).get("img_height", 32)
+        )
+        target_w = (
+            img_width or getattr(self.ocr, "img_width", None) or getattr(self.ocr, "hparams", {}).get("img_width", 200)
+        )
 
         recognitions = []
         for result in results:
@@ -678,12 +902,17 @@ class LicensePlateRecognizer:
                     continue
 
                 plate_resized = cv2.resize(plate_crop, (target_w, target_h))
-                plate_tensor = torch.from_numpy(plate_resized).permute(2, 0, 1).float() / 255.0
-                plate_tensor = plate_tensor.unsqueeze(0).to(self.device)
+                if isinstance(self.ocr, PretrainedPlateOCR):
+                    plate_gray = cv2.cvtColor(plate_resized, cv2.COLOR_RGB2GRAY)
+                    plate_tensor = torch.from_numpy(plate_gray).unsqueeze(0).unsqueeze(0).float() / 255.0
+                else:
+                    plate_tensor = torch.from_numpy(plate_resized).permute(2, 0, 1).float() / 255.0
+                    plate_tensor = plate_tensor.unsqueeze(0)
+                plate_tensor = plate_tensor.to(self.device)
 
                 with torch.no_grad():
-                    log_probs = self.ocr(plate_tensor)
-                    plate_text = self.ocr.decode(log_probs)[0]
+                    ocr_out = self.ocr(plate_tensor)
+                    plate_text = self.ocr.decode(ocr_out)[0]
 
                 recognitions.append(
                     {

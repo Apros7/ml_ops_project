@@ -30,6 +30,9 @@ COPY configs configs/
 # Final dependency sync including local package
 RUN uv sync --locked
 
+# Copy model weights into the image (for offline evaluation)
+COPY models models/
+
 # Default entrypoint = evaluation script
 # Can be overridden to run specific evaluation commands:
 # docker run eval:latest evaluate-detector data/ --weights models/detector.pt

@@ -96,6 +96,20 @@ Run the API:
 uv run invoke api
 ```
 
+Run the UI:
+
+**Terminal 1** (start API):
+```bash
+uv run invoke api
+```
+
+**Terminal 2** (start UI):
+```bash
+uv run invoke frontend
+```
+
+The UI will be available at http://localhost:8501 and requires the API to be running.
+
 Run tests and linting:
 
 ```bash

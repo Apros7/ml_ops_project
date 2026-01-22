@@ -210,8 +210,8 @@ def compare_prediction_ground_truth(
 @app.command()
 def visualize(
     image_path: str = typer.Argument(..., help="Path to input image"),
-    detector_weights: str = typer.Option("yolov8n.pt", help="Path to detector weights"),
-    ocr_checkpoint: str = typer.Option(None, help="Path to OCR checkpoint"),
+    detector_weights: str = typer.Option("models/yolo_best.pth", help="Path to detector weights"),
+    ocr_checkpoint: str = typer.Option("models/ocr_best.pth", help="Path to OCR weights (.pth) or checkpoint (.ckpt)"),
     output: str = typer.Option(None, help="Output path for visualization"),
     compare: bool = typer.Option(False, help="Compare with ground truth"),
     no_display: bool = typer.Option(False, help="Don't display the image"),
@@ -257,8 +257,8 @@ def visualize(
 def batch_visualize(
     input_dir: str = typer.Argument(..., help="Directory with input images"),
     output_dir: str = typer.Argument(..., help="Output directory for visualizations"),
-    detector_weights: str = typer.Option("yolov8n.pt", help="Path to detector weights"),
-    ocr_checkpoint: str = typer.Option(None, help="Path to OCR checkpoint"),
+    detector_weights: str = typer.Option("models/yolo_best.pth", help="Path to detector weights"),
+    ocr_checkpoint: str = typer.Option("models/ocr_best.pth", help="Path to OCR weights (.pth) or checkpoint (.ckpt)"),
     max_images: int = typer.Option(None, help="Maximum number of images to process"),
 ) -> None:
     """Batch visualize license plate recognition on multiple images.

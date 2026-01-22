@@ -1,61 +1,44 @@
-"""Logging configuration for the ml_ops package."""
-
-from __future__ import annotations
+"""Logging configuration for the ML Ops API."""
 
 import logging
-from logging.config import dictConfig
+import sys
 from pathlib import Path
-from typing import Any
+from typing import Optional
 
 
-def setup_logging(level: str = "INFO", log_file: str | Path | None = None) -> logging.Logger:
-    """Configure logging for the project.
-
-    This is safe to call multiple times; it will not add duplicate handlers.
+def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> logging.Logger:
+    """Set up logging configuration for the application.
 
     Args:
-        level: Root log level (e.g., "INFO", "DEBUG").
-        log_file: Optional log file path.
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+        log_file: Optional path to log file. If provided, creates logs/ directory if needed.
 
     Returns:
-        The configured root logger.
+        Configured logger instance.
     """
-    root = logging.getLogger()
-    if root.handlers:
-        return root
+    level = getattr(logging, log_level.upper(), logging.INFO)
 
-    handlers: dict[str, dict[str, Any]] = {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "standard",
-            "level": level,
-        },
-    }
-    root_handlers: list[str] = ["console"]
+    logger = logging.getLogger("ml_ops")
+    logger.setLevel(level)
 
-    if log_file is not None:
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(level)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    if log_file:
         log_path = Path(log_file)
-        try:
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            handlers["file"] = {
-                "class": "logging.FileHandler",
-                "formatter": "standard",
-                "level": level,
-                "filename": str(log_path),
-            }
-            root_handlers.append("file")
-        except Exception:
-            pass
+        log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    dictConfig(
-        {
-            "version": 1,
-            "disable_existing_loggers": False,
-            "formatters": {
-                "standard": {"format": "%(asctime)s | %(levelname)s | %(name)s | %(message)s"},
-            },
-            "handlers": handlers,
-            "root": {"handlers": root_handlers, "level": level},
-        }
-    )
-    return logging.getLogger()
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(level)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
+    logger.info(f"Logging configured with level {log_level}")
+    if log_file:
+        logger.info(f"Log file: {log_file}")
+
+    return logger

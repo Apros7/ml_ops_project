@@ -30,14 +30,21 @@ COPY LICENSE LICENSE
 
 RUN uv sync --locked
 
+# Copy model weights into the image (for offline inference)
+COPY models models/
+
+# Create logs directory
 RUN mkdir -p logs
+
+# Set log level
 ENV LOG_LEVEL=INFO
 
-# Cloud Run port
-ENV PORT=8080
-EXPOSE ${PORT}
+# API listens on 8000 inside the container
+EXPOSE 8080
 
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/health || exit 1
+    CMD curl -f http://localhost:8080/health || exit 1
 
-CMD ["sh", "-c", "uv run uvicorn ml_ops.api:app --host 0.0.0.0 --port ${PORT} --workers 2"]
+# Start FastAPI app via uvicorn with 2 workers
+CMD ["uv", "run", "uvicorn", "ml_ops.api:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "2"]

@@ -187,6 +187,13 @@ yolov8n.pt
 runs/
 wandb/
 
+# Logs
+logs/
+*.log
+
+# Locust reports
+locust_report_*.html
+
 # Implement hydra & config
 # Dockerfiles
 # Logging?

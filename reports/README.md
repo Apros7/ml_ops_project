@@ -478,7 +478,8 @@ Cloud Storage API
 >
 > Answer:
 
-We did not have the biggest need to use the Compute Engine, since our training wasn't very heavy. However we used it for a small sample training run. We also used vertex ai for the same job, but chose to keep working in the Engine. We used a 4Gi CPU for training.
+We did not have the biggest need to use the Compute Engine, since our training wasn't very heavy. However we used the compute engine for a small sample training run to run our container. We also used vertex ai for the same job, but chose to keep working in the Engine. We used instances firstly with 512Mi memory and 1vCPU, however this was not enough, so we ended up using instances with 4Gi memory and 1vCPU, and also an instance with 8Gi memory and 2vCPU. The VM instance that we used was an n1-standard-1 with 1 vCPUs and 3.75 GB Memory and we started it using a training container that we build and pushed to the artifact registry using the dockerfiles.
+
 
 ### Question 19
 
@@ -605,7 +606,8 @@ Yes, we wrote unit tests for the FastAPI endpoints using pytest and FastAPI’s 
 >
 > Answer:
 
-We ended up using approximately 3 credits for the project, mainly on data buckets and cloud runs. We have used very few credits, maybe because our training has been fairly light. Working in the cloud is very difficult and takes a lot of time to learn - however it is also very powerful once you get the hang of it. Personally I would have liked to spend more time working in the cloud, perhaps in a seperate project than ours/mnist.
+We ended up using approximately 3 credits for the project, mainly on data buckets, so storage. We have used very few credits, mostly because our training has been fairly light, so we have been able to run our training locally - this has been very beneficial throughout the project as earlier mentioned.
+Secondly, working in the cloud is very difficult and it takes a lot of time to learn. However it is also very powerful once you get the hang of it. Personally I would have liked to spend more time working in the cloud, perhaps in a seperate project than ours/mnist.
 
 ### Question 28
 

@@ -8,7 +8,13 @@ import torch
 from tqdm import tqdm
 from loguru import logger
 
-from ml_ops.model import PlateDetector, PlateOCR, LicensePlateRecognizer, PretrainedPlateOCR, EasyOCRFineTunedRecognizer
+from ml_ops.model import (
+    PlateDetector,
+    PlateOCR,
+    LicensePlateRecognizerEasyOCR,
+    PretrainedPlateOCR,
+    EasyOCRFineTunedRecognizer,
+)
 from ml_ops.data import CCPDDataModule, parse_ccpd_filename
 
 app = typer.Typer()
@@ -290,8 +296,13 @@ def evaluate_easyocr(
 @app.command()
 def evaluate_pipeline(
     data_dir: Path = typer.Argument(..., help="Path to test images"),
-    detector_weights: str = typer.Option("models/yolo_best.pth", help="Detector weights"),
-    ocr_checkpoint: str = typer.Option("models/ocr_best.pth", help="OCR weights (.pth) or checkpoint (.ckpt)"),
+    detector_weights: str = typer.Option(str(DEFAULT_YOLO_BEST), help="Detector weights (.pt)"),
+    ocr_weights: str = typer.Option(
+        str(DEFAULT_OCR_BEST),
+        "--ocr-checkpoint",
+        "--ocr-weights",
+        help="Fine-tuned EasyOCR weights (.pth)",
+    ),
     conf_threshold: float = typer.Option(0.25, help="Detection confidence threshold"),
     max_samples: int = typer.Option(None, help="Maximum samples to evaluate"),
 ) -> dict[str, Any]:
@@ -300,7 +311,7 @@ def evaluate_pipeline(
     Args:
         data_dir: Directory containing test images.
         detector_weights: Path to detector weights.
-        ocr_checkpoint: Path to OCR checkpoint.
+        ocr_weights: Path to fine-tuned EasyOCR weights (.pth).
         conf_threshold: Detection confidence threshold.
         max_samples: Maximum samples to evaluate.
 

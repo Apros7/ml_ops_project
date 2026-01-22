@@ -72,7 +72,7 @@ will check the repositories and the code to verify your answers.
 * [x] Use logging to log important events in your code (M14)
 * [x] Use Weights & Biases to log training progress and other important metrics/artifacts in your code (M14)
 * [x] Consider running a hyperparameter optimization sweep (M14)
-* [x] Use PyTorch-lightning (if applicable) to reduce the amount of boilerplate in your code (M15)
+* [x] Use PyTorch-lightning (if applicable) to reduce the amount of boilerplate in your code (M15) (NOTE: We chose Ultralytics and EasyOCR instead as this made more sense for us)
 
 ### Week 2
 
@@ -84,12 +84,12 @@ will check the repositories and the code to verify your answers.
 * [x] Add a linting step to your continuous integration (M17)
 * [x] Add pre-commit hooks to your version control setup (M18)
 * [x] Add a continues workflow that triggers when data changes (M19)
-* [x] Add a continues workflow that triggers when changes to the model registry is made (M19)
+* [x] Add a continues workflow that triggers when changes to the model registry is made (M19) (NOTE: This test is running, but does not really do anything yet, as we havent fully setup the model registry in GCP, but instead had our models in W&B and github repo, as this was much easier to setup and worked okay for now).
 * [x] Create a data storage in GCP Bucket for your data and link this with your data version control setup (M21)
 * [x] Create a trigger workflow for automatically building your docker images (M21)
-* [ ] Get your model training in GCP using either the Engine or Vertex AI (M21)
+* [x] Get your model training in GCP using either the Engine or Vertex AI (M21)
 * [x] Create a FastAPI application that can do inference using your model (M22)
-* [ ] Deploy your model in GCP using either Functions or Run as the backend (M23)
+* [x] Deploy your model in GCP using either Functions or Run as the backend (M23)
 * [x] Write API tests for your application and setup continues integration for these (M24)
 * [ ] Load test your application (M24)
 * [ ] Create a more specialized ML-deployment API using either ONNX or BentoML, or both (M25)
@@ -100,21 +100,21 @@ will check the repositories and the code to verify your answers.
 * [ ] Check how robust your model is towards data drifting (M27)
 * [ ] Setup collection of input-output data from your deployed application (M27)
 * [ ] Deploy to the cloud a drift detection API (M27)
-* [ ] Instrument your API with a couple of system metrics (M28)
-* [ ] Setup cloud monitoring of your instrumented application (M28)
-* [ ] Create one or more alert systems in GCP to alert you if your app is not behaving correctly (M28)
-* [ ] If applicable, optimize the performance of your data loading using distributed data loading (M29)
-* [ ] If applicable, optimize the performance of your training pipeline by using distributed training (M30)
-* [ ] Play around with quantization, compilation and pruning for you trained models to increase inference speed (M31)
+* [x] Instrument your API with a couple of system metrics (M28)
+* [x] Setup cloud monitoring of your instrumented application (M28)
+* [x] Create one or more alert systems in GCP to alert you if your app is not behaving correctly (M28)
+* [x] If applicable, optimize the performance of your data loading using distributed data loading (M29)
+* [x] If applicable, optimize the performance of your training pipeline by using distributed training (M30)
+* [x] Play around with quantization, compilation and pruning for you trained models to increase inference speed (M31)
 
 ### Extra
 
-* [ ] Write some documentation for your application (M32)
-* [ ] Publish the documentation to GitHub Pages (M32)
-* [ ] Revisit your initial project description. Did the project turn out as you wanted?
-* [ ] Create an architectural diagram over your MLOps pipeline
-* [ ] Make sure all group members have an understanding about all parts of the project
-* [ ] Uploaded all your code to GitHub
+* [x] Write some documentation for your application (M32)
+* [x] Publish the documentation to GitHub Pages (M32)
+* [x] Revisit your initial project description. Did the project turn out as you wanted? (NOTE: Yes, very close to. We would have liked the model to be much more generel in that it could read all kind of number plates, as right now it is super specialized to the type of data CCPD is. We are although happy about the fact that we have a running system users can try, and that, as far as we know, the mlops part of the project is running fairly smoothly (for now)).
+* [x] Create an architectural diagram over your MLOps pipeline
+* [x] Make sure all group members have an understanding about all parts of the project
+* [x] Uploaded all your code to GitHub
 
 ## Group information
 
@@ -123,7 +123,7 @@ will check the repositories and the code to verify your answers.
 >
 > Answer:
 
-Group 60
+*Group 60*
 
 ### Question 2
 > **Enter the study number for each member in the group**
@@ -148,7 +148,7 @@ Group 60
 >
 > Answer:
 
---- question 3 fill here ---
+*We used the Ultralytics and EasyOCR opensource frameworks for training of yolo/detr models and finetuning of ocr models for various languages respectively. We first tried implemented parts of the OCR model ourselves, but couldn't get good results. Using Yolov8n from Ultralytics and finetuning EasyOCR helped massively with respect to all the training code, model tuning and general performance, so that we could spend our time on the mlops part of the project.*
 
 ## Coding environment
 
@@ -183,6 +183,8 @@ uv sync
 pre-commit install
 ```
 
+*Pre-commit will help run all the github actions and various checks locally and speed up the loop much faster when developing new code, so this too is crucial for new people*
+
 ### Question 5
 
 > **We expect that you initialized your project using the cookiecutter template. Explain the overall structure of your**
@@ -197,7 +199,9 @@ pre-commit install
 >
 > Answer:
 
-*From the cookiecutter template we have filled out the train.py, model.py, data.py, evaluate.py, api.py, visualize.py, and the tests, dockerfiles folders. We have added a range of different config folders that contains config files for our hydra setup for running our training experiments.*
+*From the cookiecutter template we have filled out the train.py, model.py, data.py, evaluate.py, api.py, visualize.py, and the tests, dockerfiles folders. We have added a range of different config folders that contains config files for our hydra setup for running our training experiments under the "config" folder*
+
+*Besides we haven't changed much from the original structure, as we haven't found missing functionality. One of things we initially debated was whether to move the src files directly into the src/ folder instead of having the ml_ops secondary folder, which feels a bit redundant in our case. We kept things as is, as it didn't really matter, but probably something we would consider in the future. We also added a runs/ folder for logging our local runs and investigating locally before pushing code to cloud and waiting for training runs there as that makes the iteration loop extremely slow*
 
 ### Question 6
 
@@ -212,9 +216,7 @@ pre-commit install
 >
 > Answer:
 
---- question 6 fill here ---
-
-We enforced code quality with Ruff for linting and formatting, and pre-commit hooks to keep the codebase consistent. For typing and documentation we have not used any strict guidelines. However, for larger projects, these concepts are important because they ensure easier maintainability and collaboration, thus efficiency. It ensures that cross team coworkers easily can read, understand and write code without introducing foreign errors.
+*We enforced code quality with Ruff for linting and formatting, and pre-commit hooks to keep the codebase consistent. For typing and documentation we have not used any strict guidelines. However, for larger projects, these concepts are important because they ensure easier maintainability and collaboration, thus efficiency. It ensures that cross team coworkers easily can read, understand and write code without introducing foreign errors. In addition to this we added automatic testing on precommit to ensure assumptions and basic functionality didn't break. We did have some issues with the tests as it is limited what can be tested locally vs on CI (example: Linux vs MAC vs Windows), so we tried to test as many functionalities as possible here and then accepted that some cases might be different on various OS, which would then be caught in CI.*
 
 ## Version control
 
@@ -233,9 +235,7 @@ We enforced code quality with Ruff for linting and formatting, and pre-commit ho
 >
 > Answer:
 
---- question 7 fill here ---
-
-We implemented 12 tests across model, data, api and training. For training we are merely testing if the configuration used is valid. For the model, we are testing the forward pass of the detector and OCR, to ensure correct output shapes. Similarly for the data, where we primarily test for proper input dimensions and labels. For the API, we test the endpoints for valid and invalid inputs.
+*We implemented 67 tests across data, model, training, evaluation, profiling, and API. For training we mainly validate Hydra config handling, data.yaml generation, and that detector/OCR training helpers are invoked (mocked) without running full training. For models we test forward passes and decoding to ensure correct output shapes. For data we test CCPD filename parsing, dataset/dataloader behavior, and YOLO export creating image/label files. For evaluation we test metric utilities. For the API we test endpoints with valid and invalid inputs.*
 
 ### Question 8
 
@@ -250,7 +250,7 @@ We implemented 12 tests across model, data, api and training. For training we ar
 >
 > Answer:
 
---- question 8 fill here ---
+*[This image](figures/test-coverage.png) shows the coverage across the src files. It spans from 7-100% depending on, how much of the code we could test and made sense to test. Obviously, you could always go for a higher amount of coverage and more testing scenarios, which is always a trade-off. We made a rather small amount of tests in the beginning to test simple model passes, data types and various assumptions, and then added regression tests as we found bugs and improved our model. Just because coverage is high (the lines are being hit in a test), errors should for sure still happen. Having some tests for all your code is probably good, but only if they test actual scenarios and not redundant scenarios.*
 
 ### Question 9
 
@@ -280,9 +280,7 @@ We implemented 12 tests across model, data, api and training. For training we ar
 >
 > Answer:
 
---- question 10 fill here ---
-
-Yes. We used DVC to version the dataset and it was stored in a bucket in remote storage using Google Cloud Storage. For this project it was not strictly necessary to use version control for the data, since it was static. However, for projects where a model should be checkpointed and retrained as new data arrives, it could be very useful, moreover, if it is important to know what data something is trained on, versioning is also beneficial, because then we could say that we know that this model did or did not know X, i.e. it enhances reproducibility.
+*Yes. We used DVC to version the dataset and it was stored in a bucket in remote storage using Google Cloud Storage. For this project it was not strictly necessary to use version control for the data, since it was static. However, for projects where a model should be checkpointed and retrained as new data arrives, it could be very useful, moreover, if it is important to know what data something is trained on, versioning is also beneficial, because then we could say that we know that this model did or did not know X, i.e. it enhances reproducibility and helps setting up new people to the project. We experienced this when setting up the project in week 3 on a new pc and needed to download everything. This was a benefit we didn't realize at first. Additionally, we manually uploaded our trained models to a bucket in Google Cloud, but we did not manage to include them in DVC. Integrating model files into DVC would have further improved reproducibility.*
 
 ### Question 11
 
@@ -299,10 +297,9 @@ Yes. We used DVC to version the dataset and it was stored in a bucket in remote 
 >
 > Answer:
 
---- question 11 fill here ---
+*We run several GitHub Actions workflows in .github/workflows/ to cover testing, linting, and targeted checks. Our main CI pipeline is tests.yaml, which runs pytest (with coverage) in a matrix across Ubuntu/Windows/macOS, Python 3.11 + 3.12, and multiple CPU PyTorch versions (2.5.1 and 2.6.0) to catch cross-platform and version-specific regressions early. To keep CI fast, we use caching for uv + pip (~/.cache/uv, ~/.cache/pip), DVC artifacts (.dvc/cache), and model/ML caches (~/.cache/torch, ~/.EasyOCR).*
 
-We run several GitHub Actions workflows. Unit tests execute over three operating systems, two Python versions, and multiple PyTorch versions with caching for uv, pip, DVC artifacts, and model weights. We have separate workflows for linting (ruff check and format), pre-commit hooks, data-change validation (pulling DVC data and running data tests), model-registry checks, and Docker image builds. An example of a triggered workflow can be seen in the repo (.github/workflows/tests.yaml:), or in github: https://github.com/Apros7/ml_ops_project/actions/runs/21064304811
-
+*For code quality, we have a dedicated linting.yaml workflow that runs Ruff linting and formatting checks, and a separate pre-commit.yaml workflow that runs the full pre-commit hook set (also caching the pre-commit environment). We additionally use targeted workflows to avoid running everything on every change: data-change.yaml triggers only for dataset/DVC changes and runs data-focused tests, and model-registry.yaml triggers for model/config changes and runs model checks. Finally, docker-build.yaml validates that Docker images build in CI, and build_api.yaml is a manually triggered build/deploy workflow for the API. (See examples of our actions running here. These actions run on each PR and commit to main to ensure the code is always up to date. At time of writing this we run 15 different test that is all required to succeed for a PR to be merged: https://github.com/Apros7/ml_ops_project/actions)*
 
 
 ## Running code and tracking experiments
@@ -322,7 +319,13 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 12 fill here ---
+We configure experiments with Hydra YAML configs in configs/. The main config (configs/config.yaml) composes modular groups (data/model/training/W&B), and ml_ops.train loads them via load_hydra_config(...). We have picked default parameters in the train file which gives good results. This can be overwritten if needed with --override/-o flags. We found this to be good enough, although we could've spent more time making the config files better, more direct and easier to use. Everything is logged to wandb to use later when analyzing trainings.
+Example run:
+```
+uv run python -m ml_ops.train train-detector data/ccpd_tiny \
+  --override training/detector=fast --override model/detector=yolov8s --name exp-y8s-fast
+```
+
 
 ### Question 13
 
@@ -337,7 +340,15 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 13 fill here ---
+We ensured reproducibility by versioning inputs, pinning the environment, and logging outputs. Experiments are
+configured via Hydra YAML configs in `configs/` and overrides passed on the CLI; the chosen hyperparameters are stored
+in the W&B run config together with metrics. Each training run also writes artifacts locally under `runs/` (Ultralytics
+`results.csv`/plots for detection, PyTorch Lightning CSV logs + checkpoints for OCR) and we copy the best weights into
+`models/` (`yolo_best.pt`, `ocr_best.pth`). The dataset is tracked with DVC (`data.dvc`) and stored in a GCS remote, so
+`uv run dvc pull` retrieves the exact data/splits used. Dependencies are locked via `pyproject.toml` + `uv.lock`, and
+we provide Docker images for identical execution in CI/GCP. To reproduce a run: checkout the same git commit, run
+`uv run dvc pull`, then rerun `uv run python -m ml_ops.train ...` with the same Hydra overrides (available from the W&B
+run page).
 
 ### Question 14
 
@@ -354,7 +365,18 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 14 fill here ---
+The first image shows the EasyOCR report on W&B for our best run so far: ![EasyOCR W&B Report Image](figures/easyocr-results.png).
+The second image shows the tracking of our detection run (yolo) in W&B: ![Yolo W&B Report Image](figures/yolo-results-wandb.png).
+The last image shows the results of one of our detections runs (yolo). This is generated locally, then uploaded to W&B when the training is done: ![Yolo W&B Report Image](figures/yolo-results.png).
+
+Generally, we upload all the useful information to W&B, including configs, training loss(es), val loss(es) and system metrics.
+
+For the OCR model (first image), we track `train_loss` and `val_loss` to verify convergence and detect overfitting (e.g.,training loss dropping while validation loss increases). Because the end goal is correct license plate text, we also log`val_exact_accuracy` (full-string match) and `val_char_accuracy` (character-level accuracy). Exact accuracy is strict and directly reflects real-world usability (a single wrong character makes the prediction unusable), while character accuracy is more sensitive early in training and helps debug whether the model is “almost correct” vs. completely failing.
+
+For the detector (second and third images), we track the Ultralytics/YOLO loss components (`train/box_loss`, `train/cls_loss`, `train/dfl_loss` and their validation counterparts) to ensure stable optimization. In addition, we log task metrics such as `metrics/precision(B)` and `metrics/recall(B)` to understand the trade-off between false positives and false negatives, which is important because missed plates break the OCR pipeline, while too many false detections increase downstream cost and produces weird results for the end user. Finally, we track `metrics/mAP50(B)` and `metrics/mAP50-95(B)` to summarize detection quality: mAP@0.50 is an easier “did we find the plate” signal, while mAP@0.50:0.95 is stricter and better reflects box quality.
+
+Together with logged configs and system/runtime metrics, this lets us compare runs side-by-side in W&B and reliably pick
+the best checkpoint for deployment.
 
 ### Question 15
 
@@ -369,7 +391,29 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 15 fill here ---
+We used Docker to standardize training, to evaluate the API and the frontend such that experiments could run identically across laptops, CI, and GCP. Each stage has its own image built from the Dockerfiles in dockerfiles/ to pin Python, CUDA, and system dependencies. Locally we built and ran the training image for reproducible runs with Hydra overrides and mounted datasets, and we ran the API image to validate inference and integration tests.
+
+Example training run: uv run invoke train-release
+
+Example API: uv run invoke api-release
+
+This will build, tag, push and run the images.
+
+One of the Dockerfiles is here: [dockerfiles/train.dockerfile](dockerfiles/train.dockerfile).
+
+Additionally you can run the docker images directly locally or in cloud and do the same thing (as the training image entrypoint is uv run -m ml_ops.train):
+
+Example training run (persist outputs via volume mounts):
+```bash
+docker run --rm -v "$PWD/runs:/app/runs" -v "$PWD/models:/app/models" train:latest train-both data/ccpd_tiny
+```
+
+Example API run:
+```bash
+docker run --rm -p 8080:8080 api:latest
+```
+
+We also use Hydra overrides inside the container to enable features like distributed training (via `torchrun`) and optional OCR quantization (`model.ocr.easyocr.quantize=true`), although we havent used the later that much, as the speedup was pretty insignificant and made everything feel less stable.
 
 ### Question 16
 
@@ -384,7 +428,7 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 16 fill here ---
+Debugging method was of course dependant on group member. We all used the logging, and most of use also use the debugger with breakpoints. Moreover, the logs provided by Weights and Biases also proved helpful, because we could see the configuration and parameters while also seeing the error for the run, this became more difficult in GCP, when starting multiple runs at the same. Profiling is implemented for the project, but not used. For a larger project, this should be done since it could help find bottlenecks in the code. For example, data processing could be a bottleneck for a project with large data files, and therefore it could be useful.
 
 ## Working in the cloud
 
@@ -401,7 +445,25 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 17 fill here ---
+Vertex AI API,
+API Gateway API,
+Artifact Registry API,
+Gemini for Google Cloud API,
+Google Cloud APIs,
+Cloud Build API,
+Cloud Trace API,
+Compute Engine API
+Container Analysis API,
+Container Registry API,
+Gemini Cloud Assist API,
+Identity and Access Management (IAM) API,
+IAM Service Account Credentials API,
+Cloud Logging API,
+Cloud Monitoring API,
+Secret Manager API,
+Service Control API,
+Cloud Storage,
+Cloud Storage API
 
 ### Question 18
 
@@ -416,34 +478,38 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 18 fill here ---
+We did not have the biggest need to use the Compute Engine, since our training wasn't very heavy. However we used the compute engine for a small sample training run to run our container. We also used vertex ai for the same job, but chose to keep working in the Engine. We used instances firstly with 512Mi memory and 1vCPU, however this was not enough, so we ended up using instances with 4Gi memory and 1vCPU, and also an instance with 8Gi memory and 2vCPU. The VM instance that we used was an n1-standard-1 with 1 vCPUs and 3.75 GB Memory and we started it using a training container that we build and pushed to the artifact registry using the dockerfiles.
+
 
 ### Question 19
 
 > **Insert 1-2 images of your GCP bucket, such that we can see what data you have stored in it.**
-> **You can take inspiration from [this figure](figures/bucket.png).**
+> **You can take inspiration from ![this figure](figures/bucke).**
 >
 > Answer:
 
---- question 19 fill here ---
+![Our GCP Buckets](figures/bucket.png)
 
 ### Question 20
 
 > **Upload 1-2 images of your GCP artifact registry, such that we can see the different docker images that you have**
-> **stored. You can take inspiration from [this figure](figures/registry.png).**
+> **stored. You can take inspiration from ![this figure](figures/registr).**
 >
 > Answer:
 
---- question 20 fill here ---
+![Artifact registry](figures/registry.png)
+![Container registry](figures/registry2.png)
 
 ### Question 21
 
 > **Upload 1-2 images of your GCP cloud build history, so we can see the history of the images that have been build in**
-> **your project. You can take inspiration from [this figure](figures/build.png).**
+> **your project. You can take inspiration from [this figure](figures/buil).**
 >
 > Answer:
 
---- question 21 fill here ---
+This is our cloud build history.
+
+![Cloud Build History](figures/build.png)
 
 ### Question 22
 
@@ -458,7 +524,7 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 22 fill here ---
+Yes, we ran a small sample training in the Compute Engine. We did this by creating a VM and a train container. Afterwards we ran the container with the VM. We choose to bake some training images and train on them. We also tried using vertex AI, and actually have set it up, so you can start a training job using vertex AI. However we found that Vertex is easier getting started with, but more difficult to debug when things go wrong - which they often do when working in the cloud, so we decided to keep using Compute Engine as we had many issues setting up and having more control in Compute Engine helped us better solve those issues.
 
 ## Deployment
 
@@ -475,7 +541,7 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 23 fill here ---
+Yes. We implemented a FastAPI service that loads the detector and OCR models once at startup and exposes inference endpoints. The API accepts image uploads, runs detection + OCR, and returns structured JSON with plate text, confidence, and bounding boxes. We used Pydantic schemas for request/response validation, added a `/health` endpoint for readiness checks, and handled common error cases (bad file type, empty image, model not loaded) with HTTP codes. To keep behavior consistent across environments, the API is containerized and uses the same configuration files as training. We also wrote API tests to validate response formats and edge cases, which run in CI with github actions.
 
 ### Question 24
 
@@ -491,7 +557,7 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 24 fill here ---
+Yes. We deployed the FastAPI API to Google Cloud Platform using Cloud Run. The API is containerized with Docker using `api.dockerfile`, which builds a FastAPI service. We pushed the container image and deployed it as a Cloud Run service. To invoke the deployed API, users can send POST requests: `curl -X POST -F "file=@image.jpg" -F "conf_threshold=0.25"` or use the UI also hosted in cloud. The API returns JSON responses with detected license plates, bounding boxes, confidence scores, and recognized text.
 
 ### Question 25
 
@@ -506,7 +572,7 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 25 fill here ---
+Yes, we wrote unit tests for the FastAPI endpoints using pytest and FastAPI’s TestClient. The tests cover valid image uploads, invalid file type and error handling, and they run in CI with the rest of the test suite. We did not complete full load testing due to time constraints. If we were to do it, we would simulate concurrent users sending image requests, measure latency, throughput, and error rate, and then adjust the API (batching, model warmup, worker count, and image size limits) based on the results. We would document the maximum sustainable RPS before latency or error rate exceeded some acceptable thresholds.
 
 ### Question 26
 
@@ -521,7 +587,13 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 26 fill here ---
+Yes, we successfully implemented monitoring for our deployed model using Google Cloud Monitoring with Cloud Run. A custom dashboard was created in the Google Cloud Console to visualize key infrastructure-level metrics for the backend inference service.
+
+![monitoring](figures/monitoring.png)
+
+The dashboard includes container CPU utilization and container memory utilization, which allow us to monitor computational load and memory consumption during model inference. This is important for detecting resource bottlenecks and ensuring the model runs within the allocated limits. Additionally, we monitor the Cloud Run request count to observe traffic patterns and verify that the service scales correctly when requests are received. Finally, request latency is tracked to evaluate inference performance and responsiveness, which directly impacts user experience.
+
+Together, these four metrics provide real-time insight into the health, performance, and scalability of the deployed model. This monitoring setup enables early detection of performance degradation or abnormal behavior and supports the long-term reliability and maintainability of the application.
 
 ## Overall discussion of project
 
@@ -540,7 +612,8 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 27 fill here ---
+We ended up using approximately 3 credits for the project, mainly on data buckets, so storage. We have used very few credits, mostly because our training has been fairly light, so we have been able to run our training locally - this has been very beneficial throughout the project as earlier mentioned.
+Secondly, working in the cloud is very difficult and it takes a lot of time to learn. However it is also very powerful once you get the hang of it. Personally I would have liked to spend more time working in the cloud, perhaps in a seperate project than ours/mnist.
 
 ### Question 28
 
@@ -556,7 +629,7 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 28 fill here ---
+We implemented a simple frontend for the API to make demos and manual testing easier. The UI allows a user to upload an image, triggers the API inference, and displays the detected plate text and bounding boxes.
 
 ### Question 29
 
@@ -573,7 +646,28 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 29 fill here ---
+![mlops_architecture](figures/mlops_architecture.png)
+
+Our system consists of a data + training pipeline and a serving stack. For data, we use two public sources (CCPD and an
+ALPR dataset from Kaggle). We keep the dataset versioned with DVC by tracking the full `data/` directory (`data.dvc`) and
+storing the remote cache in a Google Cloud Storage bucket (`gs://ccpd_base`). This means both local development and cloud
+jobs can reproduce the exact same dataset version by running `dvc pull`.
+
+For code and automation, the repository contains the full training, evaluation, and serving code (under `src/ml_ops/`)
+plus Hydra configuration presets (under `configs/`). When we push changes to GitHub, a GitHub Actions workflow runs our
+test suite (pytest + coverage) across multiple OS/Python/PyTorch versions and pulls the DVC-tracked dataset to validate
+the data utilities and model code.
+
+For cloud training, we containerize the training entrypoint (`ml_ops.train`) and publish the `train` image to Artifact
+Registry. A Vertex AI Custom Job (submitted via Cloud Build) starts the container, runs `dvc pull`, and executes
+`ml_ops.train train-both` (YOLO detector + OCR training) using our Hydra configs. During training we log metrics and
+artifacts to Weights & Biases, and we export the best weights into the project’s `models/` folder
+(`models/yolo_best.pt` and `models/ocr_best.pth`).
+
+For serving, we build an API container that bundles the code and model weights. The FastAPI backend exposes `/detect` and
+`/recognize` endpoints and is deployed to Cloud Run. A Streamlit frontend provides a simple UI that uploads images,
+invokes the API, and displays annotated predictions. For monitoring, the backend exposes Prometheus-style metrics at
+`/metrics`, which we also surface in the UI as basic system-load and request counters.
 
 ### Question 30
 
@@ -587,7 +681,9 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 >
 > Answer:
 
---- question 30 fill here ---
+The biggest challenges in the project was using Google Cloud Platform services to deploy and run our model. The reason for this was the difficulty of pin pointing the cause of errors, possibly due to lack of experiences with GCP. Furthermore, it took time to understand how the different services in Google Cloud interacted with each other, fx where can I see my cloud runs, and which service account does it use and why, how can I give it access to my data bucket and so on. To overcome these challenges we used the modules from the course to take a step back and start over. Moreover we used ChatGPT to help us debug and understand the error messages.
+
+Another issue was the training itself. We spent quite a lot of time trying to get our own OCR model to work, but the model seemed to get stuck in local minima and couldn't improve. We also did not realize until later that finetuning in EasyOCR was possible, so we tried with many different configurations before being able to get any decent result. One of the issues was the fact the our data included number plates with both chinese and english characters. Using more computer, ignoring chinese characters as they are not relevant for us and finetuning using EasyOCR helped us get much much better models (>99% acc).
 
 ### Question 31
 
@@ -605,4 +701,12 @@ We run several GitHub Actions workflows. Unit tests execute over three operating
 > *We have used ChatGPT to help debug our code. Additionally, we used GitHub Copilot to help write some of our code.*
 > Answer:
 
---- question 31 fill here ---
+All students were equally involved in planning all elements of the project. Hereafter the specific contributions were distributed equally amongst us. All members contrubuted to code by pair programming. We have used Copilot to help write some of our code, and the documentation in particular.
+
+Contribution table:
+| Student   | Contribution                                                                 |
+|-----------|------------------------------------------------------------------------------|
+| s224209   | 25%                                                                          |
+| s224166   | 25%                                                                          |
+| s224194   | 25%                                                                          |
+| s224195   | 25%                                                                          |

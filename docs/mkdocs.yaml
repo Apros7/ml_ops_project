@@ -21,3 +21,11 @@ plugins:
 
 nav:
   - Home: index.md
+  - Guides:
+      - Quickstart: quickstart.md
+      - Architecture: architecture.md
+      - Data: data.md
+      - Training: training.md
+      - Evaluation: evaluation.md
+      - Serving: serving.md
+      - Operations: operations.md

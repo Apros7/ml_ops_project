@@ -1,7 +1,9 @@
 import pytest
 from omegaconf import OmegaConf
+import pickle
+from functools import partial
 
-from ml_ops.train import _train_ocr_with_cfg
+from ml_ops.train import _train_ocr_with_cfg, _easyocr_collate_fn
 
 
 def test_train_ocr_requires_max_images() -> None:
@@ -42,3 +44,8 @@ def test_train_ocr_requires_max_images() -> None:
 
     with pytest.raises(ValueError, match="Missing value for max_images"):
         _train_ocr_with_cfg(cfg)
+
+
+def test_easyocr_collate_fn_is_picklable() -> None:
+    collate = partial(_easyocr_collate_fn, english_only=True)
+    pickle.dumps(collate)

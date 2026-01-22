@@ -26,6 +26,12 @@ COPY src src/
 COPY README.md README.md
 COPY LICENSE LICENSE
 COPY configs configs/
+COPY .github .github/
+COPY .git .git/
+COPY .dvc .dvc/
+COPY data.dvc data.dvc
+COPY data/ccpd_base/ccpd_tiny data/ccpd_base/ccpd_tiny
+
 
 # Final dependency sync including local package
 RUN uv sync --locked

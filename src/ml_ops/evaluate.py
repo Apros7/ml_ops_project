@@ -8,10 +8,15 @@ import torch
 from tqdm import tqdm
 from loguru import logger
 
-from ml_ops.model import PlateDetector, PlateOCR, LicensePlateRecognizer, PretrainedPlateOCR
+from ml_ops.model import PlateDetector, PlateOCR, LicensePlateRecognizer, PretrainedPlateOCR, EasyOCRFineTunedRecognizer
 from ml_ops.data import CCPDDataModule, parse_ccpd_filename
 
 app = typer.Typer()
+
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+MODELS_DIR = PROJECT_ROOT / "models"
+DEFAULT_YOLO_BEST = MODELS_DIR / "yolo_best.pt"
+DEFAULT_OCR_BEST = MODELS_DIR / "ocr_best.pth"
 
 
 def calculate_iou(box1: list[float], box2: list[float]) -> float:
@@ -74,6 +79,9 @@ def evaluate_detector(
     Returns:
         Dictionary with evaluation metrics.
     """
+    if not Path(weights).exists():
+        logger.warning(f"Detector weights not found at {weights}; falling back to yolov8n.pt")
+        weights = "yolov8n.pt"
     detector = PlateDetector(model_name=weights)
 
     image_paths = []
@@ -209,6 +217,77 @@ def evaluate_ocr(
 
 
 @app.command()
+def evaluate_easyocr(
+    data_dir: Path = typer.Argument(..., help="Path to CCPD dataset"),
+    weights: str = typer.Option(str(DEFAULT_OCR_BEST), help="Path to fine-tuned EasyOCR weights"),
+    split_dir: Path = typer.Option(None, help="Directory with split files"),
+    batch_size: int = typer.Option(64, help="Batch size"),
+    num_workers: int = typer.Option(4, help="Number of workers"),
+) -> dict[str, float]:
+    """Evaluate the fine-tuned EasyOCR recognizer on cropped CCPD plates.
+
+    Args:
+        data_dir: Path to CCPD dataset.
+        weights: Path to fine-tuned EasyOCR weights (models/ocr_best.pth).
+        split_dir: Directory containing split files.
+        batch_size: Batch size for evaluation.
+        num_workers: Number of dataloader workers.
+
+    Returns:
+        Dictionary with evaluation metrics.
+    """
+    if not Path(weights).exists():
+        raise FileNotFoundError(f"EasyOCR weights not found: {weights}")
+
+    ocr = EasyOCRFineTunedRecognizer(weights, device="auto")
+
+    data_module = CCPDDataModule(
+        data_dir=data_dir,
+        split_dir=split_dir,
+        task="ocr",
+        batch_size=batch_size,
+        num_workers=num_workers,
+        img_height=ocr.img_height,
+        img_width=ocr.img_width,
+        english_only=ocr.english_only,
+    )
+    data_module.setup(stage="test")
+    test_loader = data_module.test_dataloader()
+
+    total_samples = 0
+    exact_matches = 0
+    total_char_accuracy = 0.0
+
+    for batch in tqdm(test_loader, desc="Evaluating EasyOCR"):
+        images = batch["images"]
+        plate_texts = batch["plate_texts"]
+
+        for img_tensor, gt in zip(images, plate_texts):
+            img = (img_tensor.permute(1, 2, 0).numpy() * 255.0).astype("uint8")
+            pred = ocr.predict(img)
+            total_samples += 1
+            if pred == gt:
+                exact_matches += 1
+            total_char_accuracy += calculate_char_accuracy(pred, gt)
+
+    exact_accuracy = exact_matches / total_samples if total_samples > 0 else 0.0
+    char_accuracy = total_char_accuracy / total_samples if total_samples > 0 else 0.0
+
+    results = {
+        "exact_accuracy": exact_accuracy,
+        "char_accuracy": char_accuracy,
+        "total_samples": total_samples,
+        "exact_matches": exact_matches,
+    }
+
+    logger.info("\n=== EasyOCR Evaluation Results ===")
+    logger.info(f"Exact Match Accuracy: {exact_accuracy:.4f} ({exact_matches}/{total_samples})")
+    logger.info(f"Character Accuracy: {char_accuracy:.4f}")
+
+    return results
+
+
+@app.command()
 def evaluate_pipeline(
     data_dir: Path = typer.Argument(..., help="Path to test images"),
     detector_weights: str = typer.Option("models/yolo_best.pth", help="Detector weights"),
@@ -228,9 +307,11 @@ def evaluate_pipeline(
     Returns:
         Dictionary with evaluation metrics.
     """
-    recognizer = LicensePlateRecognizer(
-        detector_weights=detector_weights,
-        ocr_checkpoint=ocr_checkpoint,
+    if not Path(detector_weights).exists():
+        logger.warning(f"Detector weights not found at {detector_weights}; falling back to yolov8n.pt")
+        detector_weights = "yolov8n.pt"
+    recognizer = LicensePlateRecognizerEasyOCR(
+        detector_weights=detector_weights, ocr_weights=ocr_weights, device="auto"
     )
 
     image_paths = []
@@ -250,7 +331,7 @@ def evaluate_pipeline(
         try:
             gt_ann = parse_ccpd_filename(img_path.name)
             gt_bbox = gt_ann["bbox"]
-            gt_text = gt_ann["plate_text"]
+            gt_text_full = gt_ann["plate_text"]
         except (ValueError, IndexError):
             continue
 
@@ -267,7 +348,11 @@ def evaluate_pipeline(
         if iou >= 0.5:
             detection_correct += 1
 
-            if best_result["plate_text"] == gt_text:
+            gt_text_eval = gt_text_full
+            if getattr(recognizer.ocr, "english_only", False) and len(gt_text_full) >= 7:
+                gt_text_eval = gt_text_full[1:7]
+
+            if best_result["plate_text"] == gt_text_eval:
                 ocr_correct += 1
                 full_pipeline_correct += 1
 

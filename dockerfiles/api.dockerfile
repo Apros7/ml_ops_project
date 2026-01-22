@@ -1,6 +1,6 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
-# System deps – same as train, since YOLO/OpenCV also run here
+# System deps
 RUN apt-get update && \
     apt-get install --no-install-recommends -y \
         build-essential \
@@ -15,20 +15,19 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Copy dependency metadata first
+# Dependencies
 COPY pyproject.toml uv.lock ./
-
 ENV UV_LINK_MODE=copy
 RUN uv sync --locked --no-install-project
 
-
-# Copy project code + configs
+# Project code
 COPY src src/
 COPY configs configs/
+COPY models models/
+COPY yolov8n.pt yolov8n.pt
 COPY README.md README.md
 COPY LICENSE LICENSE
 
-# Install local package as well
 RUN uv sync --locked
 
 # Copy model weights into the image (for offline inference)

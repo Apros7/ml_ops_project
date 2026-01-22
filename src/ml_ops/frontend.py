@@ -28,7 +28,7 @@ Example API Response Format:
                 }
             ]
         }
-    
+
     Detection:
         {
             "success": true,
@@ -131,19 +131,19 @@ def get_system_metrics(backend_url: str) -> dict[str, float]:
         if response.status_code == 200:
             metrics_text = response.text
             metrics = {"cpu": 0.0, "memory": 0.0, "disk": 0.0}
-            
+
             for line in metrics_text.split("\n"):
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
-                
+
                 # Handle Prometheus format: metric_name{labels} value or metric_name value
                 parts = line.split()
                 if len(parts) >= 2:
                     metric_name = parts[0].split("{")[0]  # Remove labels if present
                     try:
                         value = float(parts[-1])  # Last part is the value
-                        
+
                         if metric_name == "system_cpu_percent":
                             metrics["cpu"] = value
                         elif metric_name == "system_memory_percent":
@@ -152,7 +152,7 @@ def get_system_metrics(backend_url: str) -> dict[str, float]:
                             metrics["disk"] = value
                     except (ValueError, IndexError):
                         pass
-            
+
             return metrics
     except requests.RequestException:
         pass
@@ -368,21 +368,17 @@ def main() -> None:
         if health["healthy"]:
             st.header("💻 System Load")
             metrics = get_system_metrics(backend_url)
-            
+
             cpu_value = metrics.get("cpu", 0.0)
             memory_value = metrics.get("memory", 0.0)
             disk_value = metrics.get("disk", 0.0)
-            
-            cpu_color = SUCCESS_COLOR if cpu_value < 70 else WARNING_COLOR if cpu_value < 90 else ERROR_COLOR
-            memory_color = SUCCESS_COLOR if memory_value < 70 else WARNING_COLOR if memory_value < 90 else ERROR_COLOR
-            disk_color = SUCCESS_COLOR if disk_value < 70 else WARNING_COLOR if disk_value < 90 else ERROR_COLOR
-            
+
             st.metric("CPU Usage", f"{cpu_value:.1f}%")
             st.progress(cpu_value / 100)
-            
+
             st.metric("Memory Usage", f"{memory_value:.1f}%")
             st.progress(memory_value / 100)
-            
+
             st.metric("Disk Usage", f"{disk_value:.1f}%")
             st.progress(disk_value / 100)
 
@@ -404,9 +400,13 @@ def main() -> None:
     sample_image_selected = None
     sample_image_bytes = None
     sample_image_name = None
-    
+
     if sample_images_dir.exists():
-        sample_images = sorted(list(sample_images_dir.glob("*.jpg")) + list(sample_images_dir.glob("*.jpeg")) + list(sample_images_dir.glob("*.png")))
+        sample_images = sorted(
+            list(sample_images_dir.glob("*.jpg"))
+            + list(sample_images_dir.glob("*.jpeg"))
+            + list(sample_images_dir.glob("*.png"))
+        )
         if sample_images:
             cols = st.columns(min(4, len(sample_images)))
             for idx, img_path in enumerate(sample_images):
@@ -416,7 +416,9 @@ def main() -> None:
                         st.image(img_preview, use_container_width=True, caption=img_path.stem)
                         is_selected = st.session_state.get("selected_sample") == img_path.name
                         button_type = "primary" if is_selected else "secondary"
-                        if st.button(f"Use {img_path.stem}", key=f"sample_{idx}", use_container_width=True, type=button_type):
+                        if st.button(
+                            f"Use {img_path.stem}", key=f"sample_{idx}", use_container_width=True, type=button_type
+                        ):
                             sample_image_selected = img_path
                             with open(img_path, "rb") as f:
                                 sample_image_bytes = f.read()
@@ -425,7 +427,7 @@ def main() -> None:
                             st.rerun()
                     except Exception as e:
                         st.error(f"Error loading {img_path.name}: {e}")
-            
+
             if st.session_state.get("selected_sample"):
                 selected_path = sample_images_dir / st.session_state.selected_sample
                 if selected_path.exists():
@@ -437,36 +439,33 @@ def main() -> None:
             st.info("No sample images found in assets/sample_images/")
     else:
         st.info("Sample images directory not found. Add images to assets/sample_images/ to enable this feature.")
-    
+
     st.markdown("---")
     st.markdown("### 📤 Or Upload Your Own Image")
-    
+
     uploaded_file = st.file_uploader(
         "Upload Image",
         type=["jpg", "jpeg", "png"],
         help="Upload an image file containing license plates",
     )
-    
+
     if uploaded_file is not None and st.session_state.get("selected_sample"):
         st.session_state.selected_sample = None
 
     if sample_image_selected is not None:
         image_bytes = sample_image_bytes
         image = Image.open(io.BytesIO(image_bytes))
-        image_source = "sample"
         image_display_name = sample_image_name
     elif uploaded_file is not None:
         uploaded_file.seek(0)
         image_bytes = uploaded_file.read()
         image = Image.open(io.BytesIO(image_bytes))
-        image_source = "uploaded"
         image_display_name = uploaded_file.name
     else:
         image_bytes = None
         image = None
 
     if image_bytes is not None and image is not None:
-
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("📷 Original Image")
@@ -592,14 +591,14 @@ def main() -> None:
 if __name__ == "__main__":
     if "last_refresh" not in st.session_state:
         st.session_state.last_refresh = time.time()
-    
+
     # Auto-refresh every 0.5 seconds
     current_time = time.time()
     if current_time - st.session_state.last_refresh >= 0.5:
         st.session_state.last_refresh = current_time
-    
+
     main()
-    
+
     # Schedule next refresh
     time.sleep(0.1)  # Small delay to prevent excessive CPU usage
     st.rerun()

@@ -10,7 +10,8 @@
 - **CI (GitHub Actions)**
   - Runs tests + linting and (when configured) validates data access via `dvc pull`.
 - **Cloud training (Vertex AI / Cloud Run Job)**
-  - Runs a containerized training entrypoint that pulls the DVC dataset and executes `ml_ops.train`.
+  - Runs a containerized training entrypoint (see `dockerfiles/train.dockerfile`) that pulls the DVC dataset and executes
+    `ml_ops.train`.
   - Logs metrics to Weights & Biases.
 - **Serving (Cloud Run)**
   - FastAPI backend exposes `/detect`, `/recognize`, `/health`, `/metrics`.

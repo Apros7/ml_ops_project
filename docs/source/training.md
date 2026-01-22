@@ -30,6 +30,16 @@ This produces the fine-tuned EasyOCR weights used by the end-to-end evaluation p
 uv run invoke train-ocr --data-dir data/ccpd_tiny
 ```
 
+### Training via Docker
+
+The training image is built from `dockerfiles/train.dockerfile`. Its entrypoint is `uv run -m ml_ops.train`, so you can
+run the Typer CLI directly:
+
+```bash
+uv run invoke docker-build
+docker run --rm -v "$PWD/runs:/app/runs" -v "$PWD/models:/app/models" train:latest train-both data/ccpd_tiny
+```
+
 ### CRNN OCR (baseline / comparison)
 
 The CRNN model is kept mainly for comparison and tests.

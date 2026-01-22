@@ -6,3 +6,8 @@ experiment_name: plate_ocr_quick
 patience: 2
 gradient_clip_val: 5.0
 precision: auto
+distributed:
+  enabled: false
+  backend: auto
+  strategy: auto
+  use_distributed_sampler: true

@@ -1,6 +1,7 @@
 epochs: 10
 batch_size: 32
 img_size: 320
+device: null
 project_dir: runs/detect
 experiment_name: plate_detection
 # Profiling options (set ENABLE_PROFILING=true environment variable to enable)

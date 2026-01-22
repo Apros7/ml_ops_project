@@ -9,6 +9,7 @@ import cv2
 import torch
 import typer
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 import pytorch_lightning as pl
 from ml_ops.profile import cprofile_context
@@ -537,6 +538,7 @@ class CCPDDataModule(pl.LightningDataModule):
         max_train_images: int = 5000,
         max_val_images: int = 1000,
         english_only: bool = False,
+        use_distributed_sampler: bool = True,
     ) -> None:
         """Initialize the DataModule.
 
@@ -551,6 +553,7 @@ class CCPDDataModule(pl.LightningDataModule):
             max_train_images: Maximum number of training images.
             max_val_images: Maximum number of validation images.
             english_only: If True, only encode positions 2-7 (skip Chinese province).
+            use_distributed_sampler: If True, use a DistributedSampler when torch.distributed is initialized.
         """
         super().__init__()
         self.data_dir = Path(data_dir)
@@ -563,6 +566,7 @@ class CCPDDataModule(pl.LightningDataModule):
         self.max_train_images = max_train_images
         self.max_val_images = max_val_images
         self.english_only = english_only
+        self.use_distributed_sampler = use_distributed_sampler
 
         self.train_dataset = None
         self.val_dataset = None
@@ -606,10 +610,19 @@ class CCPDDataModule(pl.LightningDataModule):
     def train_dataloader(self) -> DataLoader:
         """Get training dataloader."""
         collate = ocr_collate_fn if self.task == "ocr" else None
+        sampler = None
+        if (
+            self.use_distributed_sampler
+            and torch.distributed.is_available()
+            and torch.distributed.is_initialized()
+            and self.train_dataset is not None
+        ):
+            sampler = DistributedSampler(self.train_dataset, shuffle=True)
         return DataLoader(
             self.train_dataset,
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=sampler is None,
+            sampler=sampler,
             num_workers=self.num_workers,
             collate_fn=collate,
             pin_memory=True,
@@ -618,11 +631,20 @@ class CCPDDataModule(pl.LightningDataModule):
     def val_dataloader(self) -> DataLoader:
         """Get validation dataloader."""
         collate = ocr_collate_fn if self.task == "ocr" else None
+        sampler = None
+        if (
+            self.use_distributed_sampler
+            and torch.distributed.is_available()
+            and torch.distributed.is_initialized()
+            and self.val_dataset is not None
+        ):
+            sampler = DistributedSampler(self.val_dataset, shuffle=False)
         return DataLoader(
             self.val_dataset,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
+            sampler=sampler,
             collate_fn=collate,
             pin_memory=True,
         )
@@ -630,11 +652,20 @@ class CCPDDataModule(pl.LightningDataModule):
     def test_dataloader(self) -> DataLoader:
         """Get test dataloader."""
         collate = ocr_collate_fn if self.task == "ocr" else None
+        sampler = None
+        if (
+            self.use_distributed_sampler
+            and torch.distributed.is_available()
+            and torch.distributed.is_initialized()
+            and self.test_dataset is not None
+        ):
+            sampler = DistributedSampler(self.test_dataset, shuffle=False)
         return DataLoader(
             self.test_dataset,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
+            sampler=sampler,
             collate_fn=collate,
             pin_memory=True,
         )

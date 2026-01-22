@@ -1,5 +1,6 @@
 epochs: 5
 batch_size: 16
 img_size: 256
+device: null
 project_dir: runs/detect
 experiment_name: plate_detection_fast

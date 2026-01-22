@@ -9,3 +9,8 @@ precision: auto
 # Profiling options (set ENABLE_PROFILING=true environment variable to enable)
 enable_profiling: false
 profile_every_n_steps: 100  # Profile every N training steps
+distributed:
+  enabled: false
+  backend: auto
+  strategy: auto
+  use_distributed_sampler: true

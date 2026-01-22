@@ -54,3 +54,9 @@ Run the API container (example):
 ```bash
 docker run --rm -p 8080:8080 api:latest
 ```
+
+Run the training container (example):
+
+```bash
+docker run --rm -v "$PWD/runs:/app/runs" -v "$PWD/models:/app/models" train:latest train-both data/ccpd_tiny
+```

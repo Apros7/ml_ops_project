@@ -18,6 +18,40 @@ The repo includes a Cloud Build config that submits a Vertex AI Custom Job using
   - `uv run dvc pull`
   - `uv run -m ml_ops.train train-both …`
 
+### Training container image
+
+The training image is defined in `dockerfiles/train.dockerfile`. It uses `uv` + `uv.lock` for reproducible installs and
+sets the container entrypoint to the Typer CLI:
+
+- **Entrypoint**: `uv run -m ml_ops.train`
+
+The image includes:
+
+- `configs/` (Hydra configs)
+- `.dvc/` + `data.dvc` (so you can run `dvc pull` inside the container when credentials are available)
+- `data/ccpd_tiny/` (small dataset for smoke tests)
+
+Build locally:
+
+```bash
+uv run invoke docker-build
+```
+
+Run training locally (persist outputs by mounting `runs/` and `models/`):
+
+```bash
+docker run --rm \
+  -v "$PWD/runs:/app/runs" \
+  -v "$PWD/models:/app/models" \
+  train:latest train-both data/ccpd_tiny
+```
+
+If you need to run `dvc pull` inside the container, override the entrypoint:
+
+```bash
+docker run --rm --entrypoint sh train:latest -c "uv run dvc pull && uv run -m ml_ops.train train-both data/ccpd_tiny"
+```
+
 Trigger from your machine (requires `gcloud` auth):
 
 ```bash

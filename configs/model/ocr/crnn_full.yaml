@@ -4,3 +4,6 @@ hidden_size: 384
 num_layers: 3
 dropout: 0.4
 english_only: false
+easyocr:
+  quantize: false
+  quantize_dtype: qint8

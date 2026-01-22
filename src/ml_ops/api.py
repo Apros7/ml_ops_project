@@ -278,22 +278,38 @@ def get_recognizer():
     global recognizer
     if recognizer is None:
         logger.info("Loading models...")
-        from ml_ops.model import LicensePlateRecognizer
+        from ml_ops.model import LicensePlateRecognizer, LicensePlateRecognizerEasyOCR
 
-        detector_weights = Path("models/detector/best.pt")
-        ocr_checkpoint = Path("models/ocr/last.ckpt")
+        yolo_best = Path("models/yolo_best.pt")
+        yolo_legacy = Path("models/detector/best.pt")
+        ocr_easyocr = Path("models/ocr_best.pth")
+        ocr_crnn = Path("models/ocr/last.ckpt")
 
-        if not detector_weights.exists():
-            detector_weights = "yolov8n.pt"
+        if yolo_best.exists():
+            detector_weights = str(yolo_best)
+        elif yolo_legacy.exists():
+            detector_weights = str(yolo_legacy)
         else:
-            detector_weights = str(detector_weights)
+            detector_weights = "yolov8n.pt"
 
-        ocr_ckpt = str(ocr_checkpoint) if ocr_checkpoint.exists() else None
-
-        recognizer = LicensePlateRecognizer(
-            detector_weights=detector_weights,
-            ocr_checkpoint=ocr_ckpt,
-        )
+        if ocr_easyocr.exists():
+            logger.info(f"Using fine-tuned EasyOCR weights: {ocr_easyocr}")
+            recognizer = LicensePlateRecognizerEasyOCR(
+                detector_weights=detector_weights,
+                ocr_weights=str(ocr_easyocr),
+                device="auto",
+            )
+        else:
+            ocr_ckpt = str(ocr_crnn) if ocr_crnn.exists() else None
+            if ocr_ckpt is not None:
+                logger.info(f"Using CRNN checkpoint: {ocr_ckpt}")
+            else:
+                logger.warning("No OCR weights found; /recognize may be inaccurate.")
+            recognizer = LicensePlateRecognizer(
+                detector_weights=detector_weights,
+                ocr_checkpoint=ocr_ckpt,
+                device="auto",
+            )
         logger.info("Models loaded")
     return recognizer
 

@@ -703,20 +703,40 @@ class EasyOCRFineTunedRecognizer:
     (see `models/ocr_best.pth`) and exposes a lightweight prediction interface.
     """
 
-    def __init__(self, checkpoint_path: str | Path, device: str = "auto") -> None:
+    def __init__(
+        self,
+        checkpoint_path: str | Path,
+        device: str = "auto",
+        *,
+        quantize: bool | None = None,
+        quantize_dtype: str | None = None,
+    ) -> None:
         """Initialize the recognizer.
 
         Args:
             checkpoint_path: Path to the fine-tuned checkpoint produced by `train-ocr`.
             device: Device to run inference on ('auto', 'cpu', 'cuda', etc.).
+            quantize: If True, apply dynamic INT8 quantization for CPU inference.
+                If None, uses the setting stored in the checkpoint (default: False).
+            quantize_dtype: Quantization dtype (currently only 'qint8' is supported). If None, uses the checkpoint value.
         """
         from easyocr.model.vgg_model import Model as EasyOCRVGGModel
         from easyocr.utils import CTCLabelConverter
 
-        self.device = self._get_device(device)
         self.checkpoint_path = str(checkpoint_path)
 
         payload = torch.load(self.checkpoint_path, map_location="cpu", weights_only=False)
+        checkpoint_quantize = bool(payload.get("quantize", False))
+        checkpoint_quantize_dtype = str(payload.get("quantize_dtype", "qint8"))
+        quantize_value = checkpoint_quantize if quantize is None else quantize
+        quantize_dtype_value = checkpoint_quantize_dtype if quantize_dtype is None else quantize_dtype
+
+        if quantize_value and device != "cpu":
+            logger.info("EasyOCR quantization enabled; forcing CPU inference.")
+
+        self.device = torch.device("cpu") if quantize_value else self._get_device(device)
+        self.quantized = bool(quantize_value)
+        self.quantize_dtype = str(quantize_dtype_value)
         network_params = payload["network_params"]
         characters = payload["characters"]
 
@@ -733,6 +753,30 @@ class EasyOCRFineTunedRecognizer:
         self.model.load_state_dict(cleaned_state_dict)
         self.model = self.model.to(self.device)
         self.model.eval()
+
+        if self.quantized:
+            self.model = self._apply_dynamic_quantization(self.model, dtype=self.quantize_dtype)
+            self.model.eval()
+
+    @staticmethod
+    def _apply_dynamic_quantization(model: nn.Module, *, dtype: str) -> nn.Module:
+        """Apply dynamic quantization to an EasyOCR model for CPU inference.
+
+        Args:
+            model: Model to quantize (must be on CPU).
+            dtype: Quantization dtype (currently only 'qint8' is supported).
+
+        Returns:
+            Quantized model.
+        """
+        if dtype != "qint8":
+            raise ValueError(f"Unsupported quantize_dtype: {dtype}. Supported: 'qint8'.")
+        if next(model.parameters()).device.type != "cpu":
+            raise ValueError("Dynamic quantization requires the model to be on CPU.")
+
+        from torch.ao.quantization import quantize_dynamic
+
+        return quantize_dynamic(model, {nn.Linear, nn.LSTM}, dtype=torch.qint8)
 
     def _get_device(self, device: str) -> torch.device:
         """Get the appropriate device.

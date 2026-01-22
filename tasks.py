@@ -737,7 +737,7 @@ def train_release(
         pty=not WINDOWS,
     )
     ctx.run(
-        f"docker build -t frontend:latest . -f dockerfiles/frontend.dockerfile --progress={progress}",
+        "docker build -t frontend:latest . -f dockerfiles/frontend.dockerfile",
         echo=True,
         pty=not WINDOWS,
     )
@@ -807,7 +807,9 @@ def serve_docs(ctx: Context) -> None:
 
 
 @task(name="load-test")
-def load_test(ctx: Context, host: str = "http://localhost:8000", users: int = 50, spawn_rate: int = 10, duration: str = "60s") -> None:
+def load_test(
+    ctx: Context, host: str = "http://localhost:8000", users: int = 50, spawn_rate: int = 10, duration: str = "60s"
+) -> None:
     """Run Locust load test in headless mode.
 
     Args:

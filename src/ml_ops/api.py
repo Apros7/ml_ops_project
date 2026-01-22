@@ -1,7 +1,6 @@
 """FastAPI endpoint for license plate recognition."""
 
 import asyncio
-import logging
 import os
 import tempfile
 from contextlib import asynccontextmanager
@@ -116,11 +115,11 @@ async def update_system_metrics() -> None:
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown."""
     logger.info("Starting API")
-    
+
     background_task = asyncio.create_task(update_system_metrics())
-    
+
     yield
-    
+
     background_task.cancel()
     try:
         await background_task
@@ -203,21 +202,21 @@ async def index():
         <div class="container">
           <h1>🚗 License Plate Recognition API</h1>
           <p>FastAPI backend service for license plate detection and OCR.</p>
-          
+
           <div class="info">
             <strong>📱 Modern UI Available:</strong><br>
-            For a beautiful, interactive interface with visual feedback, 
+            For a beautiful, interactive interface with visual feedback,
             visit the Streamlit frontend or run it locally:
           </div>
-          
+
           <a href="{streamlit_url}" class="button button-secondary" target="_blank">
             🎨 Open Streamlit Frontend
           </a>
-          
+
           <a href="/docs" class="button">
             📚 API Documentation (Swagger)
           </a>
-          
+
           <a href="/health" class="button">
             ❤️ Health Check
           </a>
@@ -238,7 +237,7 @@ async def index():
   -F "conf_threshold=0.25"</code></pre>
 
           <p style="color: #666; margin-top: 30px; font-size: 0.9em;">
-            💡 Tip: Use the Streamlit frontend for the best user experience with 
+            💡 Tip: Use the Streamlit frontend for the best user experience with
             visual annotations and detailed results.
           </p>
         </div>

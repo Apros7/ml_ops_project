@@ -1,0 +1,9 @@
+artifacts:
+  ocr: # artifact ID (name)
+    path: best_models123/ocr_best.pth
+    type: model
+    desc: 'OCR model'
+    labels:
+      - OCR
+    meta:
+      framework: pytorch

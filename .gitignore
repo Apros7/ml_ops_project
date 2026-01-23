@@ -198,3 +198,4 @@ locust_report_*.html
 # Dockerfiles
 # Logging?
 # Profiling?
+/models

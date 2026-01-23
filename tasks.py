@@ -21,8 +21,10 @@ Available tasks:
 
     Development:
         uv run invoke test                    # Run tests with coverage
+        uv run invoke test-integration        # Run integration tests
         uv run invoke lint                    # Run linter (ruff)
         uv run invoke format                  # Format code (ruff)
+        uv run invoke lint-and-format         # Run both lint + format
         uv run invoke pre-commit              # Run pre-commit hooks on all files
 
     Documentation:
@@ -49,6 +51,10 @@ Available tasks:
     API:
         uv run invoke api                     # Run the FastAPI service
         uv run invoke frontend                # Run the Streamlit frontend
+
+    Monitoring/Performance:
+        uv run invoke check-metrics           # Smoke-check the Prometheus /metrics endpoint
+        uv run invoke load-test               # Run Locust load test (headless)
 """
 
 import os

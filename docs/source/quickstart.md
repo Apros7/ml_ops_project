@@ -6,9 +6,17 @@
 uv sync --locked --dev
 ```
 
-### Pull data (DVC)
+### Data (no DVC required for a demo)
 
-The dataset is tracked with DVC. If you have access to the remote, pull the exact dataset version with:
+This repo includes a small CCPD subset at `data/ccpd_tiny/`, so you can run training/evaluation and the API locally
+without pulling from DVC.
+
+### Optional: Pull the full dataset (DVC)
+
+The dataset is tracked with DVC, but the remote is private. To use `dvc pull`, you need a working `.dvc/config` /
+service account setup. Please contact the project authors for access.
+
+Once you have credentials, you can pull the exact dataset version with:
 
 ```bash
 uv run dvc pull
@@ -34,12 +42,21 @@ Open:
 - **Health**: `http://localhost:8000/health`
 - **Metrics**: `http://localhost:8000/metrics`
 
+### Try it (local inference)
+
+Pick any image from the bundled tiny dataset and send it to the API:
+
+```bash
+IMG=$(ls data/ccpd_tiny/val/*.jpg | head -n 1)
+curl -X POST "http://localhost:8000/recognize" -F "file=@${IMG}" -F "conf_threshold=0.25"
+```
+
 ### Run the frontend (Streamlit)
 
 In a second terminal:
 
 ```bash
-uv run streamlit run src/ml_ops/frontend.py --server.port 8501
+uv run invoke frontend --port 8501
 ```
 
 Open `http://localhost:8501`.
